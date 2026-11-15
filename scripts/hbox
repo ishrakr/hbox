@@ -789,13 +789,13 @@ cmd_doctor() {
     check "data disk has 10% free" "[ \$(df --output=pcent '$data' | tail -1 | tr -dc 0-9) -lt 90 ]" "free up space"
     if command -v smartctl >/dev/null 2>&1; then
         disk_health_refresh now 2>/dev/null || true
-        local line path role model status problems
-        while IFS=$'\t' read -r path role model status problems; do
+        local path role model status issues
+        while IFS=$'\t' read -r path role model status issues; do
             case $status in
                 ok) check "$role disk $path ($model) is healthy" "true" "" ;;
                 warning | failing)
                     check "$role disk $path ($model) is healthy" "false" \
-                        "$problems. Copy what matters now and plan to replace it (details: sudo smartctl -a $path)" ;;
+                        "$issues. Copy what matters now and plan to replace it (details: sudo smartctl -a $path)" ;;
             esac
         done < <(jq -r '.disks[]? | [.path, (if .role == "backup" then "backup" else "server" end), .model, .status, (.problems | join(", "))] | @tsv' "$HBOX_DISK_HEALTH" 2>/dev/null)
     fi
