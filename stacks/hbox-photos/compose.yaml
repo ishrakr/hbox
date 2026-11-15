@@ -47,6 +47,9 @@ services:
       # Gunicorn 25's control socket can deadlock the worker at startup under
       # load (7 of 8 starts hung in testing; none without it).
       GUNICORN_CMD_ARGS: --no-control-socket
+      # Immich's optimized exports of the same models (v3.3+): faster, less
+      # memory, identical results, so nothing has to be processed again.
+      MACHINE_LEARNING_MODEL_REVISION: ${IMMICH_ML_MODEL_REVISION:-v2}
     networks:
       - immich
     restart: unless-stopped

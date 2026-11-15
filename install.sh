@@ -82,7 +82,7 @@ apt_install() {
 log "Installing base packages"
 apt-get update -q >/dev/null
 apt_install ca-certificates curl git gnupg openssl bzip2 avahi-daemon avahi-utils \
-    iproute2 jq util-linux apache2-utils fdisk e2fsprogs exfatprogs
+    iproute2 jq util-linux apache2-utils fdisk e2fsprogs exfatprogs smartmontools
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
     log "Installing Docker Engine from download.docker.com"

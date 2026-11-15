@@ -787,6 +787,18 @@ cmd_doctor() {
     check "Docker is running" "docker info" "sudo systemctl start docker"
     check "data directory exists" "[ -d '$data' ]" "mount the data disk at $data"
     check "data disk has 10% free" "[ \$(df --output=pcent '$data' | tail -1 | tr -dc 0-9) -lt 90 ]" "free up space"
+    if command -v smartctl >/dev/null 2>&1; then
+        disk_health_refresh now 2>/dev/null || true
+        local line path role model status problems
+        while IFS=$'\t' read -r path role model status problems; do
+            case $status in
+                ok) check "$role disk $path ($model) is healthy" "true" "" ;;
+                warning | failing)
+                    check "$role disk $path ($model) is healthy" "false" \
+                        "$problems. Copy what matters now and plan to replace it (details: sudo smartctl -a $path)" ;;
+            esac
+        done < <(jq -r '.disks[]? | [.path, (if .role == "backup" then "backup" else "server" end), .model, .status, (.problems | join(", "))] | @tsv' "$HBOX_DISK_HEALTH" 2>/dev/null)
+    fi
     check "HTTPS certificate valid for 30+ days" "openssl x509 -checkend 2592000 -noout -in '$HBOX_HOME/certs/selfsigned.crt'" "sudo hbox certs renew"
     for c in hbox-nginx immich-server immich-postgres nextcloud nextcloud-db hbox-dockge; do
         check "$c is running" "container_running $c" "sudo hbox start; sudo hbox logs $c"
@@ -872,9 +884,11 @@ HBOX_USAGE_STATE=$HBOX_STATE/usage.json
 # physical interfaces only, not Docker's bridges, so traffic between the apps
 # and nginx is not counted twice.
 usage_sample() {
-    local now total idle rx=0 tx=0 iface previous='{}'
+    local now total idle rx=0 tx=0 iface previous='{}' mem
     now=$(date +%s)
     read -r total idle < <(awk '/^cpu / {t = 0; for (i = 2; i <= 9; i++) t += $i; print t, $5 + $6}' /proc/stat)
+    # Memory in use: what the kernel could not free on demand (not caches).
+    mem=$(awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} END {if (t > 0) printf "%.1f", (t - a) * 100 / t; else print 0}' /proc/meminfo)
     for iface in /sys/class/net/*; do
         [ -e "$iface/device" ] || continue
         rx=$((rx + $(cat "$iface/statistics/rx_bytes" 2>/dev/null || echo 0)))
@@ -882,7 +896,7 @@ usage_sample() {
     done
     [ -s "$HBOX_USAGE_STATE" ] && previous=$(cat "$HBOX_USAGE_STATE")
     jq -n --argjson p "$previous" --argjson now "$now" --argjson total "${total:-0}" \
-        --argjson idle "${idle:-0}" --argjson rx "$rx" --argjson tx "$tx" '
+        --argjson idle "${idle:-0}" --argjson rx "$rx" --argjson tx "$tx" --argjson mem "${mem:-0}" '
         ($p.time // 0) as $then | ($now - $then) as $dt
         # Runs seconds apart (e.g. after an update) would give noisy values.
         | if $then > 0 and $dt >= 0 and $dt < 20 then $p
@@ -892,7 +906,7 @@ usage_sample() {
              then {t: $now,
                    cpu: ((1 - ($idle - $p.cpu_idle) / ($total - $p.cpu_total)) * 1000 | round / 10
                          | if . < 0 then 0 elif . > 100 then 100 else . end),
-                   rx: (($rx - $p.rx) / $dt | round), tx: (($tx - $p.tx) / $dt | round)}
+                   rx: (($rx - $p.rx) / $dt | round), tx: (($tx - $p.tx) / $dt | round), mem: $mem}
              else null end) as $sample
             | {time: $now, cpu_total: $total, cpu_idle: $idle, rx: $rx, tx: $tx,
                history: ((($p.history // []) + (if $sample then [$sample] else [] end))
@@ -924,7 +938,11 @@ cmd_status_update() {
         behind=$(env_get_default behind 0 "$HBOX_UPDATE_STATE")
         [[ $behind =~ ^[0-9]+$ ]] || behind=0
     fi
-    local usage='' load='' cpus
+    local usage='' load='' cpus memory health='{}'
+    memory=$(awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} /^SwapTotal:/ {st = $2} /^SwapFree:/ {sf = $2}
+        END {printf "{\"total\": %d, \"used\": %d, \"swap_total\": %d, \"swap_used\": %d}", t * 1024, (t - a) * 1024, st * 1024, (st - sf) * 1024}' /proc/meminfo)
+    disk_health_refresh 2>/dev/null || true
+    [ -s "$HBOX_DISK_HEALTH" ] && health=$(cat "$HBOX_DISK_HEALTH")
     if usage=$(usage_sample 2>/dev/null) && [ -n "$usage" ]; then
         printf '%s\n' "$usage" > "$HBOX_USAGE_STATE.tmp" && mv -f "$HBOX_USAGE_STATE.tmp" "$HBOX_USAGE_STATE"
     else
@@ -935,6 +953,7 @@ cmd_status_update() {
     tmp=$(mktemp "$HBOX_STATUS_DIR/status.json.XXXXXX")
     jq -n \
         --argjson usage "$usage" --argjson load "${load:-0}" --argjson cpus "$cpus" \
+        --argjson memory "$memory" --argjson health "$health" \
         --argjson total "${total:-0}" --argjson used "${used:-0}" \
         --argjson configured "$configured" --arg result "$result" \
         --arg time "$time" --arg next "$next" --argjson summary "$summary" \
@@ -943,8 +962,9 @@ cmd_status_update() {
         --argjson behind "$behind" \
         --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{updated: $updated, disk: {total: $total, used: $used},
-          system: {cpus: $cpus, load: $load,
-                   history: [($usage.history // [])[] | {t, cpu, rx, tx}]},
+          system: {cpus: $cpus, load: $load, memory: $memory,
+                   history: [($usage.history // [])[] | {t, cpu, rx, tx, mem}]},
+          disks: [($health.disks // [])[] | {role, model, status, temperature, problems}],
           backup: ({configured: $configured, result: $result, time: $time, next: $next,
                     connected: $disk_connected} + ($summary | {snapshots, protected})),
           hbox: {version: $version, latest: $latest, checked: $checked,

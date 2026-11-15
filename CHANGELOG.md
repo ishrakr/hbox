@@ -3,6 +3,23 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## v1.0.2 (2026-11-15)
+
+### Added
+- Dashboard: **Memory** tile with memory in use, a one-hour chart, and swap
+  when it is in use.
+- **Disk health** (SMART) for the server and backup drives: shown in the
+  Storage tile (healthy, showing wear, failing, temperature) and checked by
+  `hbox doctor`, which says what to do. Read at most hourly; a sleeping backup
+  disk is never woken. Installs `smartmontools` (patch `0001` on existing
+  servers).
+
+### Changed
+- Photos: Immich uses its optimized machine-learning models
+  (`MACHINE_LEARNING_MODEL_REVISION=v2`): faster and lighter, with identical
+  results, so nothing is processed again. They download once on first use
+  (about 1 GB). Set `IMMICH_ML_MODEL_REVISION=main` in `.env` to go back.
+
 ## v1.0.1 (2026-11-15)
 
 ### Added

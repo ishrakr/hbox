@@ -47,6 +47,10 @@ DOCKGE_IMAGE=louislam/dockge:1.5.0
 TAILSCALE_IMAGE=tailscale/tailscale:v1.104.7
 ```
 
+Photos uses Immich's optimized machine-learning models
+(`IMMICH_ML_MODEL_REVISION=v2`: faster, less memory, same results). Set it to
+`main` to use the original ones.
+
 Remove the line to follow HBOX again. Before changing versions yourself, read
 the app's release notes: Nextcloud only moves **one major version at a time**
 (e.g. 34 → 35), and PostgreSQL major versions are never upgraded

@@ -44,6 +44,7 @@ then `sudo hbox certs renew` and `sudo hbox update`.
 
 | Symptom | Fix |
 | --- | --- |
+| Dashboard: a disk "showing wear" or "failing" | The drive itself reports problems (bad sectors, worn out). Copy what matters now and plan to replace it. Details: `sudo smartctl -a /dev/sdX`; backup disk: [restore onto a new disk](Restore.md) |
 | Dashboard: "Backup disk not connected" | Plug in the disk; the next backup mounts it. Check with `sudo hbox backup status` |
 | "Last backup failed" | Open Backups (`:6443`) for the error, or `journalctl -u hbox-backrest` |
 | Backups page doesn't load | `sudo hbox backup backrest-sync` |

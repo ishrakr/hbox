@@ -225,10 +225,49 @@ function renderUsage(system) {
   $("net-note").textContent = totals && span
     ? `${formatBytes(totals.rx)} down · ${formatBytes(totals.tx)} up (${span})`
     : "";
+  const memory = system.memory || {};
+  if (memory.total > 0) {
+    const percent = Math.round((memory.used / memory.total) * 100);
+    $("mem-text").textContent = `${percent}% used`;
+    $("mem-bar").style.width = `${percent}%`;
+    const meter = $("mem-bar").parentElement;
+    meter.setAttribute("aria-valuenow", String(percent));
+    meter.classList.toggle("warn", percent >= 80 && percent < 90);
+    meter.classList.toggle("full", percent >= 90);
+    const swap = memory.swap_used > 64e6 ? `${formatBytes(memory.swap_used)} swap in use` : "";
+    $("mem-note").textContent = [
+      `${formatBytes(memory.used)} of ${formatBytes(memory.total)}`, swap,
+    ].filter(Boolean).join(" · ");
+  }
+  drawChart($("mem-chart"), [{ values: history.map((s) => s.mem ?? null).filter((v) => v !== null), className: "line" }], 100);
+
   drawChart($("net-chart"), [
     { values: rx, className: "line" },
     { values: tx, className: "line secondary" },
   ]);
+}
+
+// One line per checked drive in the Storage tile; problems first.
+function renderDiskHealth(disks) {
+  const list = $("disk-health");
+  const known = disks.filter((d) => ["ok", "warning", "failing"].includes(d.status));
+  list.replaceChildren();
+  list.hidden = known.length === 0;
+  const order = { failing: 0, warning: 1, ok: 2 };
+  known.sort((a, b) => order[a.status] - order[b.status]);
+  for (const disk of known) {
+    const item = element("li", `disk ${disk.status}`);
+    const name = disk.role === "backup" ? "Backup disk" : "Server disk";
+    const state = disk.status === "ok" ? "healthy" : disk.status === "warning" ? "showing wear" : "failing";
+    const temp = typeof disk.temperature === "number" ? ` · ${disk.temperature} °C` : "";
+    item.append(element("span", "disk-dot"), element("span", "", `${name} ${state}${temp}`));
+    const problems = Array.isArray(disk.problems) ? disk.problems.join(", ") : "";
+    item.title = [disk.model, problems].filter(Boolean).join(": ");
+    if (disk.status !== "ok") {
+      item.append(element("span", "disk-advice", `${problems}. Run sudo hbox doctor.`));
+    }
+    list.append(item);
+  }
 }
 
 let serverStatus = {};
@@ -257,6 +296,7 @@ async function loadStatus() {
   }
 
   renderUsage(status.system || {});
+  renderDiskHealth(Array.isArray(status.disks) ? status.disks : []);
 
   const backup = status.backup || {};
   const text = $("backup-text");

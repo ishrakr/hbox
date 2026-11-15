@@ -227,6 +227,14 @@ h2 {
 .chart { display: block; width: 100%; height: 40px; margin: 4px 0 2px; overflow: visible; }
 .chart .line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .chart .line.secondary { stroke: var(--ok); }
+.disk-health { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.86rem; color: var(--muted); }
+.disk { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+.disk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.disk.warning { color: var(--warn); font-weight: 600; }
+.disk.warning .disk-dot { background: var(--warn); }
+.disk.failing { color: var(--bad); font-weight: 600; }
+.disk.failing .disk-dot { background: var(--bad); }
+.disk-advice { flex-basis: 100%; padding-left: 16px; font-weight: 400; }
 .net-values { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .net-arrow { font-weight: 700; }
 .net-arrow.down { color: var(--accent); }

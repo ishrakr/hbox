@@ -8,7 +8,11 @@
 - **Network**: current download and upload speed of the server's network
   ports (not traffic between the apps inside it), a chart of the last hour
   and the amount transferred in that hour;
-- **Storage**: space used and free on the data disk;
+- **Memory**: memory in use (not counting caches the system frees on demand),
+  a chart of the last hour, and swap when it is in use;
+- **Storage**: space used and free on the data disk, and the health of the
+  server and backup drives as they report it themselves (SMART): healthy,
+  showing wear, or failing, with the temperature;
 - **Backups**: last backup, next run, number of backups, size protected, and
   whether the backup disk is connected;
 - **Software**: the HBOX version, **Check for updates** and, when one is
@@ -16,7 +20,10 @@
 
 Status is refreshed every minute by the host (`hbox-status.timer`). CPU and
 network values are averages over that minute; the hour of history is kept in
-`/var/lib/hbox/usage.json`.
+`/var/lib/hbox/usage.json`. Drive health is read at most hourly
+(`/var/lib/hbox/disk-health.json`) and never wakes a sleeping backup disk;
+`sudo hbox doctor` reads it fresh. Virtual disks that report no health are not
+shown.
 
 ## Update button
 

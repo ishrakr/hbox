@@ -78,6 +78,86 @@ disk_current_mount() {
     printf '%s' "$target"
 }
 
+# ---------------------------------------------------------------- health
+# The drives' own health reports (SMART), for the dashboard and doctor:
+# the disks holding the system, the data and the backups. Checked at most
+# hourly, and never waking a sleeping backup disk (its last result is kept).
+HBOX_DISK_HEALTH=${HBOX_DISK_HEALTH:-$HBOX_STATE/disk-health.json}
+
+# Physical disks under a mounted path (all of them for LVM or RAID).
+disk_physical() {
+    local source
+    source=$(findmnt -no SOURCE -T "$1" 2>/dev/null | sed 's/\[.*//') || return 0
+    [ -b "$source" ] || return 0
+    lsblk -snpo PATH,TYPE "$source" 2>/dev/null | awk '$2 == "disk" {print $1}'
+}
+
+# One disk as JSON: status ok, warning, failing, asleep or unsupported.
+disk_health_one() {
+    local device=$1 role=$2 json rc=0
+    json=$(smartctl -n standby,7 -H -A -i -j "$device" 2>/dev/null) || rc=$?
+    if [ "$rc" = 7 ]; then
+        jq -nc --arg p "$device" --arg r "$role" '{path: $p, role: $r, status: "asleep"}'
+        return
+    fi
+    # Bits 0-1: smartctl could not run or open the disk (virtual disks).
+    if [ $((rc & 3)) -ne 0 ] || ! jq -e . >/dev/null 2>&1 <<<"$json"; then
+        jq -nc --arg p "$device" --arg r "$role" '{path: $p, role: $r, status: "unsupported"}'
+        return
+    fi
+    jq -c --arg p "$device" --arg r "$role" '
+        def raw($id): ([.ata_smart_attributes.table[]? | select(.id == $id) | .raw.value][0] // 0);
+        (.nvme_smart_health_information_log // {}) as $n
+        | [ (if .smart_status.passed == false then "the drive reports that it is failing" else empty end),
+            (if ($n.critical_warning // 0) != 0 then "the drive reports a critical warning" else empty end),
+            (if $n.available_spare != null and $n.available_spare_threshold != null
+                and $n.available_spare < $n.available_spare_threshold then "its spare blocks are used up" else empty end)
+          ] as $failing
+        | [ (raw(5) | if . > 0 then "\(.) reallocated sectors" else empty end),
+            (raw(197) | if . > 0 then "\(.) sectors waiting to be reallocated" else empty end),
+            (raw(198) | if . > 0 then "\(.) unreadable sectors" else empty end),
+            (($n.media_errors // 0) | if . > 0 then "\(.) media errors" else empty end),
+            (($n.percentage_used // 0) | if . >= 90 then "\(.)% of its rated life used" else empty end)
+          ] as $warnings
+        | {path: $p, role: $r, model: (.model_name // ""),
+           temperature: .temperature.current, hours: .power_on_time.hours,
+           status: (if .smart_status == null and ($n | length) == 0 then "unsupported"
+                    elif ($failing | length) > 0 then "failing"
+                    elif ($warnings | length) > 0 then "warning"
+                    else "ok" end),
+           problems: ($failing + $warnings)}' <<<"$json"
+}
+
+# Refresh the cached results when older than an hour (or with "now").
+disk_health_refresh() {
+    local force=${1:-} age=999999 data mount entries=() device role previous='{}' line
+    command -v smartctl >/dev/null 2>&1 || return 0
+    if [ -s "$HBOX_DISK_HEALTH" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$HBOX_DISK_HEALTH") ))
+        previous=$(cat "$HBOX_DISK_HEALTH")
+    fi
+    [ "$force" = now ] || [ "$age" -ge 3600 ] || return 0
+    data=$(env_get_default DATA_ROOT /DATA 2>/dev/null || echo /DATA)
+    mount=$(env_get_default HBOX_BACKUP_MOUNT '' "$HBOX_BACKUP_ENV" 2>/dev/null || true)
+    declare -A roles=()
+    while IFS= read -r device; do roles[$device]=server; done < <(disk_physical / ; disk_physical "$data")
+    if [ -n "$mount" ] && mountpoint -q "$mount"; then
+        while IFS= read -r device; do roles[$device]=backup; done < <(disk_physical "$mount")
+    fi
+    for device in "${!roles[@]}"; do
+        line=$(disk_health_one "$device" "${roles[$device]}")
+        # A sleeping disk keeps its last result.
+        if [ "$(jq -r .status <<<"$line")" = asleep ]; then
+            line=$(jq -c --arg p "$device" --argjson now "$line" \
+                '[.disks[]? | select(.path == $p)][0] // $now' <<<"$previous")
+        fi
+        entries+=("$line")
+    done
+    printf '%s\n' "${entries[@]}" | jq -s --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{checked: $t, disks: (map(select(. != null)) | sort_by(.role, .path))}' > "$HBOX_DISK_HEALTH.tmp" &&
+        mv -f "$HBOX_DISK_HEALTH.tmp" "$HBOX_DISK_HEALTH"
+}
+
 disk_state() {
     jq -r --argjson min "$HBOX_BACKUP_MIN_SIZE" '
         if .system then "in use by this server"
