@@ -865,6 +865,40 @@ EOF
 # Write the disk and backup facts the dashboard shows. Contains no secrets:
 # sizes, times and the backup result only (never the repository location).
 HBOX_STATUS_DIR=${HBOX_STATUS_DIR:-$HBOX_STATE/dashboard}
+HBOX_USAGE_STATE=$HBOX_STATE/usage.json
+
+# CPU and network use since the previous sample (about a minute: the status
+# timer), keeping the last hour for the dashboard's charts. Network counts the
+# physical interfaces only, not Docker's bridges, so traffic between the apps
+# and nginx is not counted twice.
+usage_sample() {
+    local now total idle rx=0 tx=0 iface previous='{}'
+    now=$(date +%s)
+    read -r total idle < <(awk '/^cpu / {t = 0; for (i = 2; i <= 9; i++) t += $i; print t, $5 + $6}' /proc/stat)
+    for iface in /sys/class/net/*; do
+        [ -e "$iface/device" ] || continue
+        rx=$((rx + $(cat "$iface/statistics/rx_bytes" 2>/dev/null || echo 0)))
+        tx=$((tx + $(cat "$iface/statistics/tx_bytes" 2>/dev/null || echo 0)))
+    done
+    [ -s "$HBOX_USAGE_STATE" ] && previous=$(cat "$HBOX_USAGE_STATE")
+    jq -n --argjson p "$previous" --argjson now "$now" --argjson total "${total:-0}" \
+        --argjson idle "${idle:-0}" --argjson rx "$rx" --argjson tx "$tx" '
+        ($p.time // 0) as $then | ($now - $then) as $dt
+        # Runs seconds apart (e.g. after an update) would give noisy values.
+        | if $then > 0 and $dt >= 0 and $dt < 20 then $p
+          else
+            (if $then > 0 and $dt <= 600 and $total > ($p.cpu_total // 0)
+                and $rx >= ($p.rx // 0) and $tx >= ($p.tx // 0)
+             then {t: $now,
+                   cpu: ((1 - ($idle - $p.cpu_idle) / ($total - $p.cpu_total)) * 1000 | round / 10
+                         | if . < 0 then 0 elif . > 100 then 100 else . end),
+                   rx: (($rx - $p.rx) / $dt | round), tx: (($tx - $p.tx) / $dt | round)}
+             else null end) as $sample
+            | {time: $now, cpu_total: $total, cpu_idle: $idle, rx: $rx, tx: $tx,
+               history: ((($p.history // []) + (if $sample then [$sample] else [] end))
+                         | map(select(.t > $now - 3600)) | .[-60:])}
+          end'
+}
 
 cmd_status_update() {
     local data total=0 used=0 configured=false result='' time='' next='' tmp
@@ -890,8 +924,17 @@ cmd_status_update() {
         behind=$(env_get_default behind 0 "$HBOX_UPDATE_STATE")
         [[ $behind =~ ^[0-9]+$ ]] || behind=0
     fi
+    local usage='' load='' cpus
+    if usage=$(usage_sample 2>/dev/null) && [ -n "$usage" ]; then
+        printf '%s\n' "$usage" > "$HBOX_USAGE_STATE.tmp" && mv -f "$HBOX_USAGE_STATE.tmp" "$HBOX_USAGE_STATE"
+    else
+        usage='{}'
+    fi
+    read -r load _ < /proc/loadavg || load=0
+    cpus=$(nproc 2>/dev/null || echo 1)
     tmp=$(mktemp "$HBOX_STATUS_DIR/status.json.XXXXXX")
     jq -n \
+        --argjson usage "$usage" --argjson load "${load:-0}" --argjson cpus "$cpus" \
         --argjson total "${total:-0}" --argjson used "${used:-0}" \
         --argjson configured "$configured" --arg result "$result" \
         --arg time "$time" --arg next "$next" --argjson summary "$summary" \
@@ -900,6 +943,8 @@ cmd_status_update() {
         --argjson behind "$behind" \
         --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{updated: $updated, disk: {total: $total, used: $used},
+          system: {cpus: $cpus, load: $load,
+                   history: [($usage.history // [])[] | {t, cpu, rx, tx}]},
           backup: ({configured: $configured, result: $result, time: $time, next: $next,
                     connected: $disk_connected} + ($summary | {snapshots, protected})),
           hbox: {version: $version, latest: $latest, checked: $checked,

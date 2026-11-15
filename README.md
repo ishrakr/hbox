@@ -46,6 +46,7 @@ See the [wiki](https://github.com/ishrakr/hbox/wiki) (also in [`wiki/`](wiki/Hom
 [restore](wiki/Restore.md), [updates](wiki/Updates.md),
 [remote access](wiki/Remote-access.md),
 [troubleshooting](wiki/Troubleshooting.md).
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

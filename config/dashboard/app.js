@@ -147,6 +147,90 @@ function formatWhen(value) {
   return date.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+// Bytes per second as bits per second, the unit internet plans use.
+function formatRate(bytesPerSecond) {
+  const units = ["bit/s", "kbit/s", "Mbit/s", "Gbit/s"];
+  let value = Math.max(0, bytesPerSecond) * 8;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
+}
+
+// A small line chart of the last hour; one or more series of numbers.
+function drawChart(svg, series, max) {
+  const width = 120;
+  const height = 32;
+  svg.replaceChildren();
+  const count = Math.max(...series.map((s) => s.values.length));
+  if (count < 2) return;
+  const top = Math.max(max || 0, ...series.flatMap((s) => s.values), 1e-9);
+  for (const { values, className } of series) {
+    const points = values.map((value, index) => {
+      const x = (index / (count - 1)) * width;
+      const y = height - 1 - (Math.max(0, value) / top) * (height - 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", points.join(" "));
+    line.setAttribute("class", className);
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.append(line);
+  }
+}
+
+function renderUsage(system) {
+  const history = Array.isArray(system.history) ? system.history : [];
+  const latest = history[history.length - 1];
+  const minutes = history.length > 1
+    ? Math.round((latest.t - history[0].t) / 60)
+    : 0;
+  const span = minutes > 1 ? `last ${minutes} min` : "";
+
+  if (latest) {
+    const cpu = Math.round(latest.cpu);
+    $("cpu-text").textContent = `${cpu}%`;
+    $("cpu-bar").style.width = `${cpu}%`;
+    const meter = $("cpu-bar").parentElement;
+    meter.setAttribute("aria-valuenow", String(cpu));
+    meter.classList.toggle("warn", cpu >= 70 && cpu < 90);
+    meter.classList.toggle("full", cpu >= 90);
+    $("net-rx").textContent = formatRate(latest.rx);
+    $("net-tx").textContent = formatRate(latest.tx);
+  } else {
+    $("cpu-text").textContent = "Measuring…";
+    $("net-rx").textContent = "–";
+    $("net-tx").textContent = "–";
+  }
+
+  const cpuValues = history.map((s) => s.cpu);
+  const average = cpuValues.length ? Math.round(cpuValues.reduce((a, b) => a + b, 0) / cpuValues.length) : null;
+  const cores = system.cpus ? `${system.cpus} core${system.cpus > 1 ? "s" : ""}` : "";
+  const load = typeof system.load === "number" ? `load ${system.load.toFixed(2)}` : "";
+  $("cpu-note").textContent = [
+    average !== null && span ? `Average ${average}% (${span})` : "", cores, load,
+  ].filter(Boolean).join(" · ");
+  drawChart($("cpu-chart"), [{ values: cpuValues, className: "line" }], 100);
+
+  const rx = history.map((s) => s.rx);
+  const tx = history.map((s) => s.tx);
+  const totals = history.length > 1
+    ? history.slice(1).reduce((sum, s, i) => {
+      const seconds = s.t - history[i].t;
+      return { rx: sum.rx + s.rx * seconds, tx: sum.tx + s.tx * seconds };
+    }, { rx: 0, tx: 0 })
+    : null;
+  $("net-note").textContent = totals && span
+    ? `${formatBytes(totals.rx)} down · ${formatBytes(totals.tx)} up (${span})`
+    : "";
+  drawChart($("net-chart"), [
+    { values: rx, className: "line" },
+    { values: tx, className: "line secondary" },
+  ]);
+}
+
 let serverStatus = {};
 
 async function loadStatus() {
@@ -171,6 +255,8 @@ async function loadStatus() {
     meter.classList.toggle("warn", percent >= 80 && percent < 90);
     meter.classList.toggle("full", percent >= 90);
   }
+
+  renderUsage(status.system || {});
 
   const backup = status.backup || {};
   const text = $("backup-text");

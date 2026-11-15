@@ -70,6 +70,8 @@ git push                         # servers on main get it
 git tag v1.3.0 && git push --tags     # servers on stable get it
 ```
 
+Before tagging, add the release to `CHANGELOG.md`.
+
 Typical changes:
 
 | Change | How |

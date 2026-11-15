@@ -3,13 +3,20 @@
 `https://hbox.local` (or any address of the server) shows:
 
 - **Apps** with their logos and whether each one responds;
+- **CPU**: current use, a chart of the last hour, the hour's average, the
+  number of cores and the load;
+- **Network**: current download and upload speed of the server's network
+  ports (not traffic between the apps inside it), a chart of the last hour
+  and the amount transferred in that hour;
 - **Storage**: space used and free on the data disk;
 - **Backups**: last backup, next run, number of backups, size protected, and
   whether the backup disk is connected;
 - **Software**: the HBOX version, **Check for updates** and, when one is
   available, **Update now**.
 
-Status is refreshed every minute by the host (`hbox-status.timer`).
+Status is refreshed every minute by the host (`hbox-status.timer`). CPU and
+network values are averages over that minute; the hour of history is kept in
+`/var/lib/hbox/usage.json`.
 
 ## Update button
 
