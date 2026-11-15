@@ -241,9 +241,9 @@ class NginxSmokeTests(unittest.TestCase):
 
     def test_all_hostnames_proxy_to_correct_backend_with_headers(self):
         for host, service in (
-            ("photos.local", "immich-server"), ("photos", "immich-server"),
-            ("files.local", "nextcloud-web"), ("files", "nextcloud-web"),
-            ("admin.local", "hbox-dockge"), ("admin", "hbox-dockge"),
+            ("photos.hbox.local", "immich-server"),
+            ("files.hbox.local", "nextcloud-web"),
+            ("admin.hbox.local", "hbox-dockge"),
         ):
             with self.subTest(host=host):
                 status, _, body = self.request(host, "/api/check?name=hbox&x=1")
@@ -257,6 +257,16 @@ class NginxSmokeTests(unittest.TestCase):
                 self.assertEqual(data["forwarded_for"], "127.0.0.1")
                 self.assertEqual(data["host_headers"], 1)
                 self.assertEqual(data["forwarded_for_headers"], 1)
+
+    def test_retired_names_show_the_dashboard(self):
+        # photos.local, photos, ... are no longer HBOX's: they reach the
+        # dashboard like any unknown name, never an app.
+        index = (ROOT / "config/dashboard/index.html").read_bytes()
+        for host in ("photos.local", "photos", "files.local", "files", "admin.local", "admin"):
+            with self.subTest(host=host):
+                status, _, body = self.request(host, "/")
+                self.assertEqual(status, 200)
+                self.assertEqual(body, index)
 
     def test_ca_certificate_is_served_over_plain_http(self):
         for secure in (False, True):
@@ -437,16 +447,16 @@ class NginxSmokeTests(unittest.TestCase):
     def test_nextcloud_discovery_redirects(self):
         for path in ("carddav", "caldav"):
             with self.subTest(path=path):
-                status, headers, _ = self.request("files.local", f"/.well-known/{path}")
+                status, headers, _ = self.request("files.hbox.local", f"/.well-known/{path}")
                 self.assertEqual(status, 301)
-                self.assertEqual(headers["Location"], "https://files.local/remote.php/dav")
-        status, headers, _ = self.request("files.local", "/.well-known/webfinger?resource=abc")
+                self.assertEqual(headers["Location"], "https://files.hbox.local/remote.php/dav")
+        status, headers, _ = self.request("files.hbox.local", "/.well-known/webfinger?resource=abc")
         self.assertEqual(status, 301)
         self.assertEqual(headers["Location"],
-                         "https://files.local/index.php/.well-known/webfinger?resource=abc")
+                         "https://files.hbox.local/index.php/.well-known/webfinger?resource=abc")
 
     def test_websocket_upgrade(self):
-        status, headers, _ = self.request("photos.local", "/socket", headers={
+        status, headers, _ = self.request("photos.hbox.local", "/socket", headers={
             "Upgrade": "websocket", "Connection": "Upgrade",
         })
         self.assertEqual(status, 101)

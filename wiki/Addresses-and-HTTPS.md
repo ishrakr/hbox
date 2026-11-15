@@ -18,18 +18,25 @@ IP, the Tailscale IP and the tailnet name.
 | `http://<address>/hbox-ca.mobileconfig` | The same, as a profile for iPhone and iPad |
 | `https://<address>/#trust` | Dashboard: steps to trust HBOX on this device |
 
-On the LAN, `photos.local`, `files.local` and `admin.local` also serve their
-app on the normal port 443.
+On the LAN, `photos.hbox.local`, `files.hbox.local` and `admin.hbox.local`
+also serve their app on the normal port 443.
 
 Each app runs at the root of its own port because that works for IP
 addresses and tailnet names, where per-app subdomains cannot.
 
 ## `.local` names
 
-HBOX announces `hbox.local`, `photos.local`, `files.local` and `admin.local`
-over mDNS (avahi). This works on Windows 10+, macOS, iOS, Linux and most
-Android 12+ devices. For other devices, add the names to your router's DNS
-pointing at the server's IP, or use the IP.
+HBOX announces `hbox.local`, `photos.hbox.local`, `files.hbox.local` and
+`admin.hbox.local` over mDNS (avahi). `hbox.local` works on Windows 10+,
+macOS, iOS, Linux and most Android 12+ devices. The app names have two parts
+before `.local`, which macOS, iOS and Linux resolve; some Windows and Android
+versions only resolve one part. Where they don't, use `hbox.local` with the
+app's port (`https://hbox.local:2443`), which always works. For other devices,
+add the names to your router's DNS pointing at the server's IP, or use the IP.
+
+Before v1.4.1 the app names were `photos.local`, `files.local` and
+`admin.local`. Those are first come, first served on a network (another
+device could claim them), so HBOX no longer uses them.
 
 Turn announcements off with `HBOX_MDNS=0` in `.env`.
 
@@ -69,7 +76,7 @@ CA with X.509 name constraints. Devices reject a certificate from it for any
 other name, even if its key were stolen. It may only vouch for:
 
 - `.local`, `.lan`, `.home`, `.home.arpa`, `.internal` names, `localhost`
-  and the short names `hbox`, `photos`, `files`, `admin`;
+  and the short name `hbox`. None of these is a public top-level domain;
 - private and Tailscale addresses: `10.0.0.0/8`, `172.16.0.0/12`,
   `192.168.0.0/16`, `100.64.0.0/10`, `127.0.0.0/8`, `::1`, `fc00::/7`;
 - your tailnet (`*.<tailnet>.ts.net`), or any tailnet if Tailscale was not
@@ -79,7 +86,8 @@ other name, even if its key were stolen. It may only vouch for:
 A name added later outside these is left out of the certificate (`sudo hbox
 doctor` lists it). To include it, replace the CA: `sudo hbox ca renew --force`.
 
-CAs created before v1.4.0 have no limits; `sudo hbox ca` says so. Replace one
-with `sudo hbox ca renew`. Every device then has to trust the new CA (dashboard
+CAs created before v1.4.0 have no limits, and those of v1.4.0 also allowed
+`photos`, which is a public top-level domain (`example.photos`). `sudo hbox ca`
+and `sudo hbox doctor` say so. Replace one with `sudo hbox ca renew`. Every device then has to trust the new CA (dashboard
 > **Trust this device**); until then, browsers warn and apps such as Immich
 cannot connect. The old CA's key is deleted.

@@ -70,7 +70,7 @@ It also handles a Dockge-style deployment (`/opt/stacks/*`, `/opt/dockge`):
 3. Trust HBOX's certificate on each device: `sudo hbox ca`. Until then, the
    Nextcloud apps ask once to accept the new certificate.
 4. In the Nextcloud and Immich apps, change addresses that used `:8443` or
-   `:2283` to `https://files.local` / `:3443` and `https://photos.local` /
+   `:2283` to `https://files.hbox.local` / `:3443` and `https://photos.hbox.local` /
    `:2443`.
 5. Move Tailscale to HBOX when convenient (the identity in `/DATA/tailscale`
    is reused):

@@ -189,6 +189,21 @@ frontend_subnet() {
 }
 
 # Add VALUE to a Nextcloud array setting unless already present.
+# Remove a value from a Nextcloud list setting, keeping the others in order.
+nextcloud_array_remove() {
+    local key=$1 value=$2 current rest index
+    current=$(occ config:system:get "$key" 2>/dev/null || true)
+    printf '%s\n' "$current" | grep -Fxq -- "$value" || return 0
+    rest=$(printf '%s\n' "$current" | grep -Fxv -- "$value" || true)
+    occ config:system:delete "$key" >/dev/null
+    index=0
+    while IFS= read -r current; do
+        [ -n "$current" ] || continue
+        occ config:system:set "$key" "$index" --value="$current" >/dev/null
+        index=$((index + 1))
+    done <<<"$rest"
+}
+
 nextcloud_array_add() {
     local key=$1 value=$2 current index=0
     current=$(occ config:system:get "$key" 2>/dev/null || true)
@@ -210,15 +225,17 @@ configure_nextcloud_proxy() {
     ip=$(primary_ip || true)
     # Every name HBOX answers to: LAN names, the LAN IP, Tailscale names/IPs
     # (*.ts.net and 100.x). Files is served at the root of port 3443 and of
-    # files.local, so Nextcloud needs no path settings.
-    for name in files.local files hbox.local hbox "$(hostname -s).local" '*.ts.net' '100.*' \
+    # files.hbox.local, so Nextcloud needs no path settings.
+    nextcloud_array_remove trusted_domains files.local
+    nextcloud_array_remove trusted_domains files
+    for name in files.hbox.local hbox.local hbox "$(hostname -s).local" '*.ts.net' '100.*' \
         $(env_get_default HBOX_EXTRA_NAMES '' | tr ',' ' '); do
         nextcloud_array_add trusted_domains "$name"
     done
     [ -n "$ip" ] && nextcloud_array_add trusted_domains "$ip"
     [ -n "$subnet" ] && nextcloud_array_add trusted_proxies "$subnet"
     occ config:system:set overwriteprotocol --value=https >/dev/null
-    occ config:system:set overwrite.cli.url --value=https://files.local >/dev/null
+    occ config:system:set overwrite.cli.url --value=https://files.hbox.local >/dev/null
 }
 
 is_hbox_project() {
@@ -247,13 +264,13 @@ conflicting_containers() {
 }
 
 # Disable mDNS announcements of HBOX names made outside HBOX (for example
-# avahi-alias@photos.local.service): two publishers of one name collide.
+# avahi-alias@photos.hbox.local.service): two publishers of one name collide.
 disable_foreign_mdns_aliases() {
     local unit
     while read -r unit _; do
         case $unit in
-            avahi-alias@hbox.local.service | avahi-alias@photos.local.service | \
-                avahi-alias@files.local.service | avahi-alias@admin.local.service)
+            avahi-alias@hbox.local.service | avahi-alias@photos.hbox.local.service | \
+                avahi-alias@files.hbox.local.service | avahi-alias@admin.hbox.local.service)
                 log "Replacing $unit with HBOX's own announcements"
                 systemctl disable --now "$unit" >/dev/null 2>&1 || true
                 ;;
@@ -327,7 +344,7 @@ Usage: sudo hbox setup [options]
   --immich-db-password P  Existing Immich DB password (migration; default immich)
   --nextcloud-db-password P  Existing Nextcloud DB password (migration; default nextcloud)
   --tailscale-authkey KEY Enable Tailscale remote access with this key
-  --no-mdns               Do not announce hbox.local, photos.local, ... on the LAN
+  --no-mdns               Do not announce hbox.local, photos.hbox.local, ... on the LAN
   --yes                   Do not ask for confirmation
 EOF
 }
@@ -418,11 +435,23 @@ cert_names() {
     } | sed '/^$/d' | sort -u | paste -sd, -
 }
 
+# HBOX's fixed names, in every certificate (generate-certs.sh).
+HBOX_CERT_FIXED_NAMES="hbox.local hbox photos.hbox.local files.hbox.local admin.hbox.local"
+# Names earlier versions put in the certificate that it must no longer have.
+HBOX_CERT_RETIRED_NAMES="photos.local photos files.local files admin.local admin"
+
 # True when the certificate covers every current name and address, except
-# those the CA may not vouch for (see generate-certs.sh).
+# those the CA may not vouch for (see generate-certs.sh), and no retired name.
 cert_covers_names() {
-    local cert=$HBOX_HOME/certs/selfsigned.crt excluded=$HBOX_HOME/certs/names-excluded name
+    local cert=$HBOX_HOME/certs/selfsigned.crt excluded=$HBOX_HOME/certs/names-excluded name sans
     [ -f "$cert" ] || return 1
+    sans=$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null | tr ',' '\n' | sed 's/^ *//')
+    for name in $HBOX_CERT_FIXED_NAMES; do
+        grep -qxF "DNS:$name" <<<"$sans" || return 1
+    done
+    for name in $HBOX_CERT_RETIRED_NAMES; do
+        grep -qxF "DNS:$name" <<<"$sans" && return 1
+    done
     for name in $(cert_names | tr ',' ' '); do
         [ -f "$excluded" ] && grep -qxF -- "$name" "$excluded" && continue
         openssl x509 -noout -checkhost "$name" -in "$cert" 2>/dev/null | grep -q 'does match' && continue
@@ -706,7 +735,7 @@ EOF
         cat >&2 <<EOF
 
 Your existing Photos and Files accounts are unchanged.
-HBOX Admin (https://admin.local) login: $admin_user / $password
+HBOX Admin (https://admin.hbox.local) login: $admin_user / $password
 Show it again with: sudo hbox credentials
 EOF
     fi
@@ -729,9 +758,9 @@ print_addresses() {
     ts_ip=$(tailscale_identity | grep -E '^100\.' | head -n 1 || true)
     cat >&2 <<EOF
     Dashboard:  https://hbox.local
-    Photos:     https://hbox.local:2443    (or https://photos.local)
-    Files:      https://hbox.local:3443    (or https://files.local)
-    Admin:      https://hbox.local:5443    (or https://admin.local)
+    Photos:     https://hbox.local:2443    (or https://photos.hbox.local)
+    Files:      https://hbox.local:3443    (or https://files.hbox.local)
+    Admin:      https://hbox.local:5443    (or https://admin.hbox.local)
 EOF
     local name
     while IFS= read -r name; do
@@ -817,6 +846,10 @@ cmd_doctor() {
         done < <(jq -r '.disks[]? | [.path, (if .role == "backup" then "backup" else "server" end), .model, .status, (.problems | join(", "))] | @tsv' "$HBOX_DISK_HEALTH" 2>/dev/null)
     fi
     check "HTTPS certificate valid for 30+ days" "openssl x509 -checkend 2592000 -noout -in '$HBOX_HOME/certs/selfsigned.crt'" "sudo hbox certs renew"
+    if [ -r "$HBOX_CA_DIR/ca.crt" ]; then
+        check "HTTPS certificate authority limited to HBOX's names" "ca_is_limited" \
+            "replace it: sudo hbox ca renew (every device must then trust the new one)"
+    fi
     if [ -s "$HBOX_HOME/certs/names-excluded" ]; then
         check "HTTPS certificate covers every address" "false" \
             "$(paste -sd, "$HBOX_HOME/certs/names-excluded") are outside the HBOX CA's names; use the server's other addresses, or replace the CA: sudo hbox ca renew --force"
@@ -863,7 +896,7 @@ renew_certificate() {
     if container_running hbox-nginx; then
         docker exec hbox-nginx nginx -s reload >/dev/null 2>&1 || stack_compose hbox-core restart hbox-nginx
     fi
-    log "Issued an HTTPS certificate for: hbox.local, photos.local, files.local, admin.local, $(cert_names | sed 's/,/, /g')"
+    log "Issued an HTTPS certificate for: hbox.local, photos.hbox.local, files.hbox.local, admin.hbox.local, $(cert_names | sed 's/,/, /g')"
 }
 
 cmd_certs() {
@@ -875,9 +908,12 @@ cmd_certs() {
     esac
 }
 
-# True when the CA is limited to HBOX's names (CAs before v1.4.0 are not).
+# True when the CA is limited to HBOX's names. CAs before v1.4.0 have no
+# limits; those of v1.4.0 also allowed "photos", a public top-level domain.
 ca_is_limited() {
-    openssl x509 -in "$HBOX_CA_DIR/ca.crt" -noout -text 2>/dev/null | grep -q 'X509v3 Name Constraints'
+    local text
+    text=$(openssl x509 -in "$HBOX_CA_DIR/ca.crt" -noout -text 2>/dev/null) || return 1
+    grep -q 'X509v3 Name Constraints' <<<"$text" && ! grep -qE '^ *DNS:(photos|files|admin)$' <<<"$text"
 }
 
 # A new CA, limited to HBOX's names, and a certificate from it. Every device
@@ -958,7 +994,7 @@ The certificate file on this server: $HBOX_HOME/certs/hbox-ca.crt
 Its fingerprint (SHA-256) starts with $(ca_fingerprint 2>/dev/null)
 EOF
     if [ -r "$HBOX_CA_DIR/ca.crt" ] && ! ca_is_limited; then
-        printf '\nThis CA is not limited to HBOX'"'"'s names (created before v1.4.0).\n' >&2
+        printf '\nThis CA is not limited to HBOX'"'"'s names (created before v1.4.1).\n' >&2
         printf 'Replace it with a limited one: sudo hbox ca renew (devices must trust it again)\n' >&2
     fi
 }

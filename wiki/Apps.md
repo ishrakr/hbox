@@ -3,9 +3,9 @@
 | App | Address | Software |
 | --- | --- | --- |
 | Dashboard | `https://hbox.local` | HBOX's start page ([Dashboard](Dashboard.md)) |
-| Photos | `:2443` or `https://photos.local` | [Immich](https://immich.app) |
-| Files | `:3443` or `https://files.local` | [Nextcloud](https://nextcloud.com) |
-| Admin | `:5443` or `https://admin.local` | [Dockge](https://github.com/louislam/dockge) |
+| Photos | `:2443` or `https://photos.hbox.local` | [Immich](https://immich.app) |
+| Files | `:3443` or `https://files.hbox.local` | [Nextcloud](https://nextcloud.com) |
+| Admin | `:5443` or `https://admin.hbox.local` | [Dockge](https://github.com/louislam/dockge) |
 | Backups | `:6443` | [Backrest](https://github.com/garethgeorge/backrest) with [restic](https://restic.net) |
 | Remote access | optional | [Tailscale](https://tailscale.com) |
 
@@ -25,7 +25,7 @@ Data: `/DATA/immich/upload` (originals) and its PostgreSQL database.
 
 Files, calendars and contacts, with desktop and phone sync apps. Log in with
 the administrator **user name**. Calendar and contacts sync (CalDAV/CardDAV)
-use `https://files.local` or `https://<address>:3443`.
+use `https://files.hbox.local` or `https://<address>:3443`.
 
 Data: `/DATA/nextcloud/data` (users' files) and its PostgreSQL database.
 

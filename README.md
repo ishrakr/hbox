@@ -6,9 +6,9 @@ access, installed with one command and updated from git.
 | App | Address | Software |
 | --- | --- | --- |
 | Dashboard | `https://hbox.local` | Status and links |
-| Photos | `:2443` · `photos.local` | [Immich](https://immich.app) |
-| Files | `:3443` · `files.local` | [Nextcloud](https://nextcloud.com) |
-| Admin | `:5443` · `admin.local` | [Dockge](https://github.com/louislam/dockge) |
+| Photos | `:2443` · `photos.hbox.local` | [Immich](https://immich.app) |
+| Files | `:3443` · `files.hbox.local` | [Nextcloud](https://nextcloud.com) |
+| Admin | `:5443` · `admin.hbox.local` | [Dockge](https://github.com/louislam/dockge) |
 | Backups | `:6443` | [Backrest](https://github.com/garethgeorge/backrest) + [restic](https://restic.net) |
 | Remote access | optional | [Tailscale](https://tailscale.com) |
 | Documents | optional, `:7443` | [Paperless-ngx](https://docs.paperless-ngx.com) |

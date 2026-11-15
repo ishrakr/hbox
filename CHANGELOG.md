@@ -3,6 +3,22 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## v1.4.1 (2026-11-15)
+
+### Changed
+- The apps' LAN names are now **`photos.hbox.local`, `files.hbox.local` and
+  `admin.hbox.local`** (announced over mDNS, in the certificate, accepted by
+  nginx and Nextcloud). `photos.local`, `files.local`, `admin.local` and the
+  bare names `photos`, `files`, `admin` are no longer used: any device on the
+  network could claim the `.local` ones. Update bookmarks and app settings
+  that use them; `hbox.local:<port>` keeps working.
+
+### Security
+- The CA no longer allows the names `photos`, `files` and `admin`: `photos`
+  is a public top-level domain, so a v1.4.0 CA could vouch for
+  `example.photos`. `sudo hbox doctor` flags such a CA; replace it with
+  `sudo hbox ca renew` (every device must trust the new one).
+
 ## v1.4.0 (2026-11-15)
 
 ### Security

@@ -304,8 +304,8 @@ class ProxyAndRepositoryTests(unittest.TestCase):
     def test_hostnames_and_service_dns(self):
         config = (ROOT / "config/nginx/default.conf").read_text()
         for directive in (
-            "listen 443 ssl default_server;", "server_name photos.local photos _;",
-            "server_name files.local files _;", "server_name admin.local admin _;",
+            "listen 443 ssl default_server;", "server_name photos.hbox.local _;",
+            "server_name files.hbox.local _;", "server_name admin.hbox.local _;",
             "listen 2443 ssl;", "listen 3443 ssl;", "listen 5443 ssl;",
             "root /usr/share/nginx/hbox-dashboard;", "alias /var/lib/hbox-dashboard/status.json;",
             "alias /var/lib/hbox-dashboard/apps.json;",
@@ -411,8 +411,12 @@ class CertificateTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE((dest / "hbox-ca.crt").stat().st_mode), 0o644)
             self.assertFalse((dest / "ca.key").exists())
             details = self.openssl("x509", "-in", str(cert), "-noout", "-text")
-            for hostname in ("hbox.local", "photos.local", "files.local", "admin.local"):
+            for hostname in ("hbox.local", "photos.hbox.local", "files.hbox.local", "admin.hbox.local"):
                 self.assertIn(f"DNS:{hostname}", details)
+            # No public top-level domain ("photos" is one) and no bare
+            # app names under .local, which other devices may claim.
+            for hostname in ("photos", "files", "admin", "photos.local", "files.local", "admin.local"):
+                self.assertNotIn(f"DNS:{hostname},", details + ",")
             # The server certificate verifies against the published HBOX CA.
             verify = subprocess.run(["openssl", "verify", "-CAfile", str(dest / "hbox-ca.crt"), str(cert)],
                                     capture_output=True, text=True)
@@ -448,12 +452,13 @@ class CertificateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("X509v3 Name Constraints: critical", self.openssl("x509", "-in", str(ca / "ca.crt"),
                                                                              "-noout", "-text"))
-            for san in ("DNS:hbox.local", "DNS:photos.local", "DNS:hbox", "DNS:hbox.tail6328e7.ts.net",
+            for san in ("DNS:hbox.local", "DNS:photos.hbox.local", "DNS:hbox", "DNS:hbox.tail6328e7.ts.net",
                         "DNS:nas.lan", "DNS:hbox.home.arpa", "IP:192.168.1.79", "IP:10.0.0.5",
                         "IP:100.73.132.128", "IP:fd7a:115c:a1e0::1", "IP:127.0.0.1"):
                 with self.subTest(allowed=san):
                     self.assertTrue(self.sign_probe(ca, san))
             for san in ("DNS:www.example.com", "DNS:accounts.google.com", "DNS:local.evil.com",
+                        "DNS:example.photos", "DNS:photos", "DNS:example.files", "DNS:example.admin",
                         "DNS:other.tail9999.ts.net", "DNS:ts.net", "IP:8.8.8.8", "IP:2001:4860::8888"):
                 with self.subTest(refused=san):
                     self.assertFalse(self.sign_probe(ca, san))

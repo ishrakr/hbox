@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Publish the HBOX service names as mDNS aliases of this server, so devices on
-# the LAN reach https://photos.local etc. without any DNS configuration.
+# the LAN reach https://photos.hbox.local etc. without any DNS configuration.
 # The host itself answers to <hostname>.local through avahi already.
 set -euo pipefail
 
-NAMES=(hbox.local photos.local files.local admin.local)
+NAMES=(hbox.local photos.hbox.local files.hbox.local admin.hbox.local)
 own=$(hostname -s).local
 
 ip=''

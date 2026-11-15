@@ -44,8 +44,8 @@ certificate is renewed.
 
 | App | Server address |
 | --- | --- |
-| Immich | `https://photos.local` or `https://<server-ip>:2443` |
-| Nextcloud | `https://files.local` or `https://<server-ip>:3443` |
+| Immich | `https://photos.hbox.local` or `https://<server-ip>:2443` |
+| Nextcloud | `https://files.hbox.local` or `https://<server-ip>:3443` |
 
 With [remote access](Remote-access.md), use the tailnet name instead
 (`https://hbox.<tailnet>.ts.net:2443`) so the apps work at home and away.

@@ -67,7 +67,8 @@ is_private_ip() {
 # routers use, and private and Tailscale address ranges. Plus the tailnet and
 # any other name the server has when the CA is created.
 ca_constraints() {
-    dns="local localhost hbox photos files admin lan home home.arpa internal"
+    # (No name here may be a public top-level domain: "photos" is one.)
+    dns="local localhost hbox lan home home.arpa internal"
     ips="IP:10.0.0.0/255.0.0.0,IP:172.16.0.0/255.240.0.0,IP:192.168.0.0/255.255.0.0"
     ips="$ips,IP:100.64.0.0/255.192.0.0,IP:127.0.0.0/255.0.0.0"
     ips="$ips,IP:0:0:0:0:0:0:0:1/FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF,IP:FC00:0:0:0:0:0:0:0/FE00:0:0:0:0:0:0:0"
@@ -144,13 +145,10 @@ authorityKeyIdentifier = keyid
 [names]
 DNS.1 = hbox.local
 DNS.2 = hbox
-DNS.3 = photos.local
-DNS.4 = photos
-DNS.5 = files.local
-DNS.6 = files
-DNS.7 = admin.local
-DNS.8 = admin
-DNS.9 = localhost
+DNS.3 = photos.hbox.local
+DNS.4 = files.hbox.local
+DNS.5 = admin.hbox.local
+DNS.6 = localhost
 IP.1 = 127.0.0.1
 EOF
 
@@ -166,7 +164,7 @@ ca_permits() {
         openssl verify -CAfile "$CA_DIR/ca.crt" "$WORK/probe.crt" >/dev/null 2>&1
 }
 
-dns_n=9
+dns_n=6
 ip_n=1
 excluded=''
 for name in $extra_names; do

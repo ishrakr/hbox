@@ -1,5 +1,5 @@
 [Unit]
-Description=Announce HBOX names (hbox.local, photos.local, files.local, admin.local) on the LAN
+Description=Announce HBOX names (hbox.local, photos.hbox.local, files.hbox.local, admin.hbox.local) on the LAN
 After=avahi-daemon.service network-online.target
 Requires=avahi-daemon.service
 Wants=network-online.target
