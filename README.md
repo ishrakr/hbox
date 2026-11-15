@@ -11,9 +11,11 @@ access, installed with one command and updated from git.
 | Admin | `:5443` · `admin.local` | [Dockge](https://github.com/louislam/dockge) |
 | Backups | `:6443` | [Backrest](https://github.com/garethgeorge/backrest) + [restic](https://restic.net) |
 | Remote access | optional | [Tailscale](https://tailscale.com) |
+| Documents | optional, `:7443` | [Paperless-ngx](https://docs.paperless-ngx.com) |
+| Status | optional, `:4443` | [Uptime Kuma](https://github.com/louislam/uptime-kuma) |
 
 Ports work on any address of the server: `hbox.local`, LAN IP or Tailscale
-name.
+name. Optional apps: `sudo hbox apps enable paperless` (or `status`).
 
 ## Install
 

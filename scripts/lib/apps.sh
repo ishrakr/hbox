@@ -16,9 +16,18 @@
 #     "port": 4443,                           HTTPS port on every address
 #     "upstream": "http://uptime-kuma:3001",  container:port on hbox-frontend
 #     "health": "/",                          path that answers when up (optional)
-#     "max_body": "100M"                      upload limit (optional, default 100M)
-#   }
-# plus an optional logo.svg or logo.png next to it, shown on the dashboard.
+#     "max_body": "100M",                     upload limit (optional, default 100M)
+#     "secrets": ["NOTES_SECRET_KEY"],        .env keys generated once (optional)
+#     "database": {                           PostgreSQL dumped before each backup
+#       "service": "notes-db",                  and loaded on restore (optional);
+#       "container": "hbox-notes-db",
+#       "user": "notes",                        its folder under DATA_ROOT/apps/NAME
+#       "dir": "pgdata"                         is left out of the file backup
+#     },
+#     "exclude": ["cache"]                    folders under DATA_ROOT/apps/NAME not
+#   }                                         worth backing up (optional)
+# plus an optional logo.svg or logo.png next to it, shown on the dashboard,
+# and an optional setup.sh, sourced after each start (make it idempotent).
 
 HBOX_NGINX_APPS_DIR=${HBOX_NGINX_APPS_DIR:-$HBOX_STATE/nginx-apps}
 HBOX_LOCAL_DIR=$HBOX_HOME/local
@@ -87,6 +96,15 @@ app_validate() {
         die "$name: upstream must look like http://container:port (got $upstream)."
     body=$(app_get "$name" max_body || echo 100M)
     [[ $body =~ ^[0-9]+[kKmMgG]?$ ]] || die "$name: max_body must look like 100M (got $body)."
+    jq -e '(.secrets // []) | all(type == "string" and test("^[A-Z][A-Z0-9_]*$"))' "$dir/app.json" >/dev/null ||
+        die "$name: secrets must be a list of names like NOTES_SECRET_KEY."
+    jq -e '(.database // null) | . == null or ((.service | type == "string" and test("^[A-Za-z0-9._-]+$"))
+            and (.container | type == "string" and test("^[A-Za-z0-9._-]+$"))
+            and (.user | type == "string" and test("^[a-z_][a-z0-9_]*$"))
+            and (.dir | type == "string" and test("^[A-Za-z0-9._-]+$")))' "$dir/app.json" >/dev/null ||
+        die "$name: database needs a service, a container, a user and a dir (a folder name)."
+    jq -e '(.exclude // []) | all(type == "string" and test("^[A-Za-z0-9._-]+$"))' "$dir/app.json" >/dev/null ||
+        die "$name: exclude must be a list of folder names."
     while IFS= read -r other; do
         [ "$other" = "$name" ] && continue
         app_dir "$other" >/dev/null || continue
@@ -239,14 +257,55 @@ app_link_dockge() {
     ln -sfn "$HBOX_ENV_FILE" "$dir/.env"
 }
 
+# Generate the app's secrets in .env once; later starts keep them.
+app_secrets() {
+    local name=$1 key
+    while IFS= read -r key; do
+        [ -n "$(env_get "$key" 2>/dev/null)" ] && continue
+        env_set "$key" "$(openssl rand -hex 32)"
+    done < <(jq -r '(.secrets // [])[]' "$(app_dir "$name")/app.json")
+}
+
+app_start() {
+    local name=$1 data dir
+    data=$(env_get_default DATA_ROOT /DATA)
+    dir=$(app_dir "$name") || return 0
+    install -d -m 750 "$data/apps/$name"
+    app_secrets "$name"
+    log "Starting app $name"
+    with_retries "Starting app $name" app_compose "$name" up -d --remove-orphans --wait --wait-timeout 600
+    if [ -f "$dir/setup.sh" ]; then
+        # shellcheck disable=SC1091
+        (set -Eeuo pipefail; HBOX_APP=$name; HBOX_APP_DATA=$data/apps/$name; . "$dir/setup.sh") ||
+            die "Setting up app $name failed (above)."
+    fi
+}
+
 apps_start_enabled() {
-    local name data
+    local name
+    while IFS= read -r name; do
+        app_start "$name"
+    done < <(apps_enabled)
+}
+
+# Enabled apps with a database, as "name<TAB>container<TAB>user<TAB>dir<TAB>service".
+apps_databases() {
+    local name dir
+    while IFS= read -r name; do
+        dir=$(app_dir "$name") || continue
+        jq -r --arg n "$name" '.database // empty | [$n, .container, .user, .dir, .service] | @tsv' "$dir/app.json"
+    done < <(apps_enabled)
+}
+
+# Folders under DATA_ROOT/apps not to back up: databases (dumped instead)
+# and the caches apps list.
+apps_backup_excludes() {
+    local name dir data
     data=$(env_get_default DATA_ROOT /DATA)
     while IFS= read -r name; do
-        app_dir "$name" >/dev/null || continue
-        install -d -m 750 "$data/apps/$name"
-        log "Starting app $name"
-        with_retries "Starting app $name" app_compose "$name" up -d --remove-orphans --wait --wait-timeout 300
+        dir=$(app_dir "$name") || continue
+        jq -r --arg base "$data/apps/$name" \
+            '[(.database.dir // empty), (.exclude // [])[]] | .[] | "\($base)/\(.)"' "$dir/app.json"
     done < <(apps_enabled)
 }
 
@@ -299,10 +358,14 @@ cmd_apps() {
     esac
 }
 
-# Bring nginx and the apps in line with HBOX_APPS.
+# Bring nginx, the apps and the backup plan in line with HBOX_APPS.
 apps_apply() {
     apps_render_all
     stack_up hbox-core
     apps_start_enabled
     nginx_reload
+    # Backups must include the app's data folder and dump its database.
+    if declare -F backrest_enabled >/dev/null && backup_configured; then
+        (backrest_sync) || warn "Backups (Backrest) were not updated; run: sudo hbox backup backrest-sync"
+    fi
 }

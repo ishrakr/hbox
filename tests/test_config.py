@@ -252,6 +252,31 @@ class AppsAndPatchesTests(unittest.TestCase):
                 self.assertNotIn("ports:", compose)  # reached only through nginx
                 self.assertNotIn(":latest", compose)
 
+    @unittest.skipUnless(shutil.which("docker"), "Docker Compose CLI is required")
+    def test_shipped_apps_compose_and_declare_their_data(self):
+        for app in sorted((ROOT / "apps").iterdir()):
+            with self.subTest(app=app.name):
+                meta = json.loads((app / "app.json").read_text())
+                env = compose_environment()
+                for key in meta.get("secrets", []):
+                    env[key] = "test-secret"
+                result = subprocess.run(
+                    ["docker", "compose", "--project-directory", str(app), "-f", str(app / "compose.yaml"),
+                     "--env-file", str(ROOT / ".env.example"), "config", "--format", "json"],
+                    env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                services = json.loads(result.stdout)["services"]
+                host = meta["upstream"].split("//")[1].split(":")[0]
+                self.assertIn(host, [s.get("container_name") for s in services.values()])
+                database = meta.get("database")
+                if database:
+                    self.assertEqual(services[database["service"]]["container_name"], database["container"])
+                # Every bind mount lives under the app's own data folder.
+                for service in services.values():
+                    for volume in service.get("volumes", []):
+                        if volume.get("type") == "bind":
+                            self.assertTrue(volume["source"].startswith(f"/DATA/apps/{app.name}"), volume["source"])
+
     def test_migrations_are_numbered_and_unique(self):
         names = sorted(p.name for p in (ROOT / "migrations").glob("*.sh"))
         numbers = [n[:4] for n in names]

@@ -3,7 +3,19 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
-## Unreleased
+## v1.1.0 (2026-11-15)
+
+### Added
+- Optional app **Documents** ([Paperless-ngx](https://docs.paperless-ngx.com)
+  3.4.2): `sudo hbox apps enable paperless`, at `https://<server>:7443`. Text
+  recognition and full-text search for scans and PDFs; upload in the browser,
+  from the Paperless mobile apps, or by dropping files into
+  `/DATA/apps/paperless/consume`. Signs in with the HBOX administrator login.
+  Its documents, settings and database are backed up and restored with the
+  rest.
+- Optional apps can declare generated `secrets`, a PostgreSQL `database`
+  (dumped before each backup, loaded on restore, raw folder not backed up),
+  `exclude` folders and a `setup.sh` run after each start.
 
 ### Changed
 - Dashboard: CPU, memory, network, storage and disk health are one slim
@@ -11,6 +23,12 @@ All notable changes to HBOX. Versions are git tags; servers following the
   only when they need attention; a disk with problems adds a message saying
   what to do. Details (averages, peaks, totals, drive models and
   temperatures) appear on hover or tap.
+
+### Fixed
+- `hbox start`, `stop` and `restart` include optional apps.
+- A restore stops optional apps first and starts them again afterwards.
+- Enabling or disabling an app updates the backup plan right away, instead of
+  at the next update.
 
 ## v1.0.2 (2026-11-15)
 

@@ -1,0 +1,100 @@
+# HBOX optional app: Documents (Paperless-ngx). Enable with: sudo hbox apps enable paperless
+# Served by HBOX's nginx at https://<address>:7443/ (see app.json).
+# Everything lives in DATA_ROOT/apps/paperless:
+#   consume/   drop scans and PDFs here (or a network share pointing here)
+#   media/     the documents, original and archived (backed up)
+#   data/      search index and settings (backed up)
+#   export/    output of the document exporter
+#   pgdata/    database (dumped before each backup instead)
+services:
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION:-3.4.2}
+    container_name: hbox-paperless
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/apps/paperless/data
+        target: /usr/src/paperless/data
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/apps/paperless/media
+        target: /usr/src/paperless/media
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/apps/paperless/export
+        target: /usr/src/paperless/export
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/apps/paperless/consume
+        target: /usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://hbox-paperless-redis:6379
+      PAPERLESS_DBHOST: hbox-paperless-db
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBPASS: "${PAPERLESS_DB_PASSWORD:?Enable the app with sudo hbox apps enable paperless}"
+      PAPERLESS_SECRET_KEY: "${PAPERLESS_SECRET_KEY:?Enable the app with sudo hbox apps enable paperless}"
+      # Reached on any address of the server (IP, hbox.local, Tailscale), on
+      # port 7443 behind HBOX's nginx.
+      PAPERLESS_ALLOWED_HOSTS: "*"
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: ${PAPERLESS_TRUSTED_ORIGINS:-}
+      PAPERLESS_USE_X_FORWARD_HOST: "true"
+      PAPERLESS_USE_X_FORWARD_PORT: "true"
+      PAPERLESS_PROXY_SSL_HEADER: '["HTTP_X_FORWARDED_PROTO", "https"]'
+      PAPERLESS_TIME_ZONE: ${TZ:-Etc/UTC}
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
+      PAPERLESS_OCR_LANGUAGES: ${PAPERLESS_OCR_LANGUAGES:-}
+      # Files dropped over a network share do not always raise inotify events.
+      PAPERLESS_CONSUMER_POLLING_INTERVAL: "60"
+      PAPERLESS_CONSUMER_RECURSIVE: "true"
+      PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS: "true"
+      # Owner of the files it writes, so the consume folder is usable by the
+      # same user as Nextcloud's files.
+      USERMAP_UID: ${PUID:-1000}
+      USERMAP_GID: ${PGID:-1000}
+    networks:
+      - frontend
+      - paperless
+    restart: unless-stopped
+
+  paperless-db:
+    image: postgres:18
+    container_name: hbox-paperless-db
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: "${PAPERLESS_DB_PASSWORD:?Enable the app with sudo hbox apps enable paperless}"
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/apps/paperless/pgdata
+        target: /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - paperless
+    restart: unless-stopped
+
+  paperless-redis:
+    image: docker.io/valkey/valkey:9-alpine
+    container_name: hbox-paperless-redis
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - paperless
+    restart: unless-stopped
+
+networks:
+  frontend:
+    name: hbox-frontend
+    external: true
+  paperless:
+    name: hbox-paperless

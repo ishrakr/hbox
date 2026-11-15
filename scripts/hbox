@@ -114,7 +114,10 @@ hbox_start_all() {
 }
 
 hbox_stop_all() {
-    local stack
+    local stack name
+    while IFS= read -r name; do
+        app_dir "$name" >/dev/null && app_compose "$name" stop || true
+    done < <(apps_enabled)
     stack_compose hbox-dockge stop || true
     for stack in hbox-tailscale hbox-files hbox-photos hbox-core; do
         stack_compose "$stack" stop || true
@@ -366,7 +369,7 @@ setup_dirs() {
 
     log "Preparing data directories under $data"
     install -d -m 755 "$data" "$data/immich" "$data/nextcloud"
-    install -d -m 750 "$data/immich/upload" "$data/immich/model-cache" "$data/dockge"
+    install -d -m 750 "$data/immich/upload" "$data/immich/model-cache" "$data/dockge" "$data/apps"
     # Immich mounts PGDATA itself (the image chowns it to postgres, mode 700).
     # PostgreSQL 18 mounts the parent and keeps PGDATA in 18/docker, so the
     # mount point must stay traversable; the data directory inside is 700.
@@ -985,6 +988,12 @@ cmd_maintenance() {
     if container_running nextcloud && nextcloud_installed; then
         configure_nextcloud_proxy
     fi
+    # Apps' own settings that depend on the server's addresses (setup.sh).
+    local app
+    while IFS= read -r app; do
+        [ -f "$(app_dir "$app" 2>/dev/null)/setup.sh" ] || continue
+        (app_start "$app") || warn "App $app: setup failed; see: sudo hbox apps enable $app"
+    done < <(apps_enabled)
     # Backrest runs the weekly integrity check and prune itself.
     if backup_configured && ! backrest_enabled; then
         backup_check
@@ -1086,9 +1095,9 @@ main() {
     [ "$#" -gt 0 ] && shift
     case $HBOX_COMMAND in
         status) cmd_status ;;
-        start) require_root; require_docker; require_env; hbox_start_all ;;
+        start) require_root; require_docker; require_env; hbox_start_all; apps_start_enabled ;;
         stop) require_root; require_docker; hbox_stop_all ;;
-        restart) require_root; require_docker; require_env; hbox_stop_all; hbox_start_all ;;
+        restart) require_root; require_docker; require_env; hbox_stop_all; hbox_start_all; apps_start_enabled ;;
         logs) cmd_logs "$@" ;;
         credentials) require_root; cat "$HBOX_CREDENTIALS" ;;
         doctor) require_root; cmd_doctor ;;

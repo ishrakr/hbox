@@ -78,6 +78,9 @@ backup_excludes() {
         "$data/nextcloud/data/appdata_*/preview" \
         "$data/immich/upload/thumbs" \
         "$data/immich/upload/encoded-video"
+    if declare -F apps_backup_excludes >/dev/null; then
+        apps_backup_excludes
+    fi
 }
 
 backup_write_status() {
@@ -173,6 +176,14 @@ backup_prepare() {
     else
         dump_database nextcloud-db nextcloud "$staging/nextcloud.sql"
     fi
+    local app container user dbdir service
+    while IFS=$'\t' read -r app container user dbdir service; do
+        if container_running "$container"; then
+            dump_database "$container" "$user" "$staging/app-$app.sql"
+        else
+            warn "App $app is not running; its database is not in this backup."
+        fi
+    done < <(apps_databases)
     {
         printf 'hbox_home=%s\n' "$HBOX_HOME"
         printf 'data_root=%s\n' "$(env_get_default DATA_ROOT /DATA)"
@@ -459,6 +470,30 @@ restore_database() {
     log "Restored $container ($tables tables)."
 }
 
+# An optional app's database: a fresh folder, the dump loaded, then the app
+# starts normally with the rest.
+app_restore_database() {
+    local app=$1 container=$2 user=$3 dbdir=$4 dump=$5 service=$6 dir ts tables
+    dir=$(env_get_default DATA_ROOT /DATA)/apps/$app/$dbdir
+    ts=$(date +%Y%m%d-%H%M%S)
+    app_compose "$app" down >/dev/null 2>&1 || true
+    if [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
+        log "Keeping the previous $container data at $dir.pre-restore-$ts"
+        mv -- "$dir" "$dir.pre-restore-$ts"
+    fi
+    install -d -m 755 "$dir"
+    app_compose "$app" up -d "$service"
+    wait_until 180 "$container" container_healthy "$container"
+    log "Loading the $container database dump"
+    docker exec -i "$container" psql --quiet --dbname=postgres --username="$user" < "$dump" \
+        >/dev/null 2>"$HBOX_STATE/restore-$container.log" || true
+    tables=$(docker exec "$container" psql -tA --username="$user" --dbname="$user" \
+        -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+    [ "${tables:-0}" -gt 0 ] ||
+        die "The $container database is empty after restore. See $HBOX_STATE/restore-$container.log"
+    log "Restored $container ($tables tables)."
+}
+
 backup_restore() {
     local snapshot=latest
     while [ "$#" -gt 0 ]; do
@@ -486,7 +521,10 @@ EOF
     backup_lock
 
     log "Stopping HBOX"
-    local stack
+    local stack name
+    while IFS= read -r name; do
+        app_dir "$name" >/dev/null && app_compose "$name" down >/dev/null 2>&1 || true
+    done < <(apps_enabled)
     for stack in hbox-tailscale hbox-files hbox-photos hbox-core; do
         stack_compose "$stack" down >/dev/null 2>&1 || true
     done
@@ -503,10 +541,23 @@ EOF
     ensure_network
     restore_database hbox-photos immich-postgres immich "$staging/immich.sql" immich/pgdata 700
     restore_database hbox-files nextcloud-db nextcloud "$staging/nextcloud.sql" nextcloud/pgdata 755
+    # Optional apps listed in the restored .env, with a database in the snapshot.
+    local app container user dbdir service
+    while IFS=$'\t' read -r app container user dbdir service; do
+        if [ -s "$staging/app-$app.sql" ]; then
+            app_restore_database "$app" "$container" "$user" "$dbdir" "$staging/app-$app.sql" "$service"
+        else
+            warn "The snapshot has no database for app $app; it starts empty."
+        fi
+    done < <(apps_databases)
     rm -f "$staging"/*.sql
 
     log "Starting HBOX"
+    # The restored .env may enable optional apps: render their nginx config,
+    # ports and dashboard cards before nginx starts.
+    apps_render_all
     hbox_start_all
+    apps_start_enabled
     if wait_for_nextcloud 300; then
         occ maintenance:mode --off >/dev/null 2>&1 || true
         # Tell sync clients the data changed so they re-check instead of deleting.
