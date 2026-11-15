@@ -1,5 +1,7 @@
 # Dashboard
 
+![The HBOX dashboard](https://raw.githubusercontent.com/ishrakr/hbox/main/docs/screenshots/dashboard-light.png)
+
 `https://hbox.local` (or any address of the server) shows:
 
 - **Apps** with their logos and whether each one responds;
@@ -36,6 +38,8 @@ The bottom of the page shows the address you used, **Trust this device**,
 
 ## Trust this device
 
+![Trust this device](https://raw.githubusercontent.com/ishrakr/hbox/main/docs/screenshots/trust.png)
+
 **Trust this device** at the bottom opens the steps to install HBOX's
 certificate on the phone, tablet or computer you are using (it picks the
 device; tabs show the others). iPhones and iPads get a configuration profile,
@@ -44,6 +48,8 @@ start of the certificate's fingerprint, the same as in `sudo hbox ca`.
 `https://<address>/#trust` opens it directly, handy to send to someone.
 
 ## Power menu
+
+![The power menu](https://raw.githubusercontent.com/ishrakr/hbox/main/docs/screenshots/power-menu.png)
 
 The power button at the top right opens:
 
