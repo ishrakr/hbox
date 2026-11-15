@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for HBOX updates (and install them if HBOX_AUTO_UPDATE=1)
+Documentation=file:///opt/hbox/wiki/Updates.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hbox update --auto
+Nice=10

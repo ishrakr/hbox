@@ -1,0 +1,63 @@
+# HBOX Files: Nextcloud and its PostgreSQL database.
+# Upgrade only with the HBOX upgrade procedure (one major version at a time).
+name: hbox-files
+
+services:
+  nextcloud:
+    image: ${NEXTCLOUD_IMAGE:-lscr.io/linuxserver/nextcloud:35.0.3}
+    container_name: nextcloud
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Etc/UTC}
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/nextcloud/config
+        target: /config
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/nextcloud/data
+        target: /data
+        bind:
+          create_host_path: false
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:8443:443"
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+    networks:
+      frontend:
+        aliases: [nextcloud-web]
+      nextcloud:
+    restart: unless-stopped
+
+  nextcloud-db:
+    image: postgres:18
+    container_name: nextcloud-db
+    environment:
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD:?Set NEXTCLOUD_DB_PASSWORD in the HBOX .env}
+      POSTGRES_DB: nextcloud
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/nextcloud/pgdata
+        target: /var/lib/postgresql
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - nextcloud
+    restart: unless-stopped
+
+networks:
+  frontend:
+    name: hbox-frontend
+    external: true
+  nextcloud:
+    name: hbox-nextcloud

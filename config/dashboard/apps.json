@@ -1,0 +1,43 @@
+{
+  "title": "HBOX",
+  "sections": [
+    {
+      "name": "Apps",
+      "items": [
+        {
+          "name": "Photos",
+          "description": "Your photo and video library",
+          "port": 2443,
+          "logo": "immich.svg",
+          "health": "photos"
+        },
+        {
+          "name": "Files",
+          "description": "Files, calendar and contacts",
+          "port": 3443,
+          "logo": "nextcloud.svg",
+          "health": "files"
+        }
+      ]
+    },
+    {
+      "name": "Manage",
+      "items": [
+        {
+          "name": "Admin",
+          "description": "Start, stop and inspect apps",
+          "port": 5443,
+          "logo": "dockge.svg",
+          "health": "admin"
+        },
+        {
+          "name": "Backups",
+          "description": "Back up, browse and restore",
+          "port": 6443,
+          "logo": "backrest.svg",
+          "health": "backups"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# HBOX Remote access (optional). Enable with: sudo hbox enable tailscale
+name: hbox-tailscale
+
+services:
+  tailscale:
+    image: ${TAILSCALE_IMAGE:-tailscale/tailscale:v1.104.7}
+    container_name: hbox-tailscale
+    hostname: ${TS_HOSTNAME:-hbox}
+    network_mode: host
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/tailscale
+        target: /var/lib/tailscale
+        bind:
+          create_host_path: false
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_ROUTES: ${TS_ROUTES:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    restart: unless-stopped

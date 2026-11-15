@@ -1,0 +1,10 @@
+[Unit]
+Description=HBOX maintenance (certificate renewal, backup integrity check)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hbox maintenance
+Nice=10
+IOSchedulingClass=idle

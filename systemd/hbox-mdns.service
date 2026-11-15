@@ -1,0 +1,14 @@
+[Unit]
+Description=Announce HBOX names (hbox.local, photos.local, files.local, admin.local) on the LAN
+After=avahi-daemon.service network-online.target
+Requires=avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/hbox/scripts/hbox-mdns
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

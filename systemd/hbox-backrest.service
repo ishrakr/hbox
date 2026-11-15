@@ -1,0 +1,19 @@
+[Unit]
+Description=HBOX Backups (Backrest): runs and manages the restic backups
+Documentation=file:///opt/hbox/wiki/Backups.md
+After=docker.service network-online.target local-fs.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+# Runs as root: it reads every app's data and dumps the databases.
+ExecStart=/usr/local/bin/hbox backup backrest-run
+Restart=on-failure
+RestartSec=10
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

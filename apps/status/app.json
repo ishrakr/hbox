@@ -1,0 +1,8 @@
+{
+  "name": "Status",
+  "description": "Uptime monitoring and alerts (Uptime Kuma)",
+  "port": 4443,
+  "upstream": "http://hbox-status-kuma:3001",
+  "health": "/",
+  "max_body": "10M"
+}

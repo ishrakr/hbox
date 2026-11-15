@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>HBOX</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <div class="brand">
+        <img src="/favicon.svg" alt="" width="40" height="40">
+        <div>
+          <h1 id="title">HBOX</h1>
+          <p id="greeting" class="muted">Your home server</p>
+        </div>
+      </div>
+      <div id="overall" class="pill" hidden>
+        <span class="pill-dot"></span><span id="overall-text"></span>
+      </div>
+    </header>
+
+    <main>
+      <div id="sections"></div>
+
+      <section id="server" aria-labelledby="server-heading" hidden>
+        <h2 id="server-heading">Server</h2>
+        <div class="tiles">
+          <div class="tile">
+            <div class="tile-head">
+              <span class="tile-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+              </span>
+              <span class="tile-label">Storage</span>
+            </div>
+            <div id="disk-text" class="tile-value">–</div>
+            <div class="meter" role="progressbar" aria-labelledby="disk-text" aria-valuemin="0" aria-valuemax="100">
+              <span id="disk-bar"></span>
+            </div>
+            <div id="disk-free" class="tile-note"></div>
+          </div>
+
+          <div class="tile">
+            <div class="tile-head">
+              <span class="tile-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+              </span>
+              <span class="tile-label">Backups</span>
+            </div>
+            <div id="backup-text" class="tile-value">–</div>
+            <div id="backup-next" class="tile-note"></div>
+            <div class="actions">
+              <a id="backup-open" class="button" href="#">Manage backups</a>
+            </div>
+          </div>
+
+          <div class="tile" id="update-tile">
+            <div class="tile-head">
+              <span class="tile-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+              </span>
+              <span class="tile-label">Software</span>
+            </div>
+            <div id="version-text" class="tile-value">–</div>
+            <div id="version-note" class="tile-note"></div>
+            <div class="actions">
+              <button id="update-button" class="button primary" type="button" hidden>Update now</button>
+              <button id="check-button" class="button" type="button">Check for updates</button>
+            </div>
+            <div id="update-progress" class="progress" role="status" aria-live="polite" hidden>
+              <span class="spinner" aria-hidden="true"></span><span id="update-progress-text"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="muted small">
+      <span id="address"></span><span id="updated"></span>
+    </footer>
+  </div>
+
+  <dialog id="login" aria-labelledby="login-title">
+    <form id="login-form" method="dialog">
+      <h3 id="login-title">Install the update</h3>
+      <p class="muted small">
+        HBOX backs up first, then updates. Apps may be unavailable for a few
+        minutes. Sign in with the HBOX administrator account
+        (<code>sudo hbox credentials</code>).
+      </p>
+      <label>User name
+        <input id="login-user" name="user" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="error small" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="login-cancel" class="button" type="button">Cancel</button>
+        <button class="button primary" type="submit">Update now</button>
+      </div>
+    </form>
+  </dialog>
+
+  <noscript><p class="notice">Enable JavaScript to see your apps.</p></noscript>
+</body>
+</html>

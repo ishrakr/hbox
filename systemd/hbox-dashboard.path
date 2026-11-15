@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for actions requested from the HBOX dashboard
+
+[Path]
+# nginx writes a file here when someone presses a button on the dashboard.
+DirectoryNotEmpty=/var/lib/hbox/requests
+MakeDirectory=yes
+DirectoryMode=0730
+
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Publish the HBOX service names as mDNS aliases of this server, so devices on
+# the LAN reach https://photos.local etc. without any DNS configuration.
+# The host itself answers to <hostname>.local through avahi already.
+set -euo pipefail
+
+NAMES=(hbox.local photos.local files.local admin.local)
+own=$(hostname -s).local
+
+ip=''
+for _ in $(seq 1 30); do
+    ip=$(ip -4 route get 1.1.1.1 2>/dev/null |
+        awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }')
+    [ -n "$ip" ] && break
+    sleep 2
+done
+[ -n "$ip" ] || { echo "No IPv4 address found." >&2; exit 1; }
+
+pids=()
+cleanup() { [ "${#pids[@]}" -gt 0 ] && kill "${pids[@]}" 2>/dev/null; }
+trap cleanup EXIT
+trap 'exit 0' TERM INT
+
+for name in "${NAMES[@]}"; do
+    # Avahi already owns the machine's own name; publishing it again conflicts.
+    [ "$name" = "$own" ] && continue
+    avahi-publish --address -R "$name" "$ip" &
+    pids+=("$!")
+done
+
+echo "Announcing ${NAMES[*]} at $ip"
+# Restart (via systemd) when the address changes or a publisher exits.
+while sleep 30; do
+    for pid in "${pids[@]}"; do
+        kill -0 "$pid" 2>/dev/null || exit 1
+    done
+    current=$(ip -4 route get 1.1.1.1 2>/dev/null |
+        awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }')
+    [ "$current" = "$ip" ] || { echo "Address changed to $current; restarting." >&2; exit 1; }
+done

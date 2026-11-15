@@ -1,0 +1,7 @@
+[Unit]
+Description=Update HBOX dashboard status (disk space, last backup)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hbox status-update
+Nice=10

@@ -1,0 +1,35 @@
+name: Check
+
+# Servers following main install every push (sudo hbox update), so every push
+# and pull request must pass these checks. Nothing is built or published.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install nginx for the live proxy tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          sudo systemctl stop nginx
+      - name: Lint scripts and patches
+        run: make lint
+      - name: Validate stacks and apps
+        run: make config
+      - name: Tests
+        env:
+          NGINX_BINARY: /usr/sbin/nginx
+        run: make check

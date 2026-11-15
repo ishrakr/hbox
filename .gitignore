@@ -1,0 +1,18 @@
+.env
+.env.*
+!.env.example
+# Stack directories link to the shared ../../.env (created by hbox setup).
+/stacks/*/.env
+/manager/.env
+/certs/*
+!/certs/.gitkeep
+/ca/
+/data/
+__pycache__/
+*.py[cod]
+.DS_Store
+# Server-local: your own apps and dashboard links, generated files.
+/local/
+/stacks/hbox-core/compose.override.yaml
+/stacks/hbox-app-*
+/apps/*/.env

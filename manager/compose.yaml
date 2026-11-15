@@ -1,0 +1,37 @@
+# HBOX Admin: Dockge, the web UI for starting, stopping, updating and
+# inspecting the HBOX stacks in ../stacks. It runs as its own project, so
+# stopping an app stack from the UI never stops the UI itself.
+#
+# Dockge requires the stacks directory at the SAME path inside and outside the
+# container. HBOX_HOME (default /opt/hbox) is mounted at its own path for that.
+name: hbox-dockge
+
+services:
+  dockge:
+    image: ${DOCKGE_IMAGE:-louislam/dockge:1.5.0}
+    container_name: hbox-dockge
+    ports:
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${DATA_ROOT:-/DATA}/dockge
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HBOX_HOME:-/opt/hbox}
+        target: ${HBOX_HOME:-/opt/hbox}
+        bind:
+          create_host_path: false
+    environment:
+      DOCKGE_STACKS_DIR: ${HBOX_HOME:-/opt/hbox}/stacks
+      TZ: ${TZ:-Etc/UTC}
+    networks:
+      - frontend
+    restart: unless-stopped
+
+networks:
+  frontend:
+    name: hbox-frontend
+    external: true
