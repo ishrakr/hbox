@@ -46,3 +46,9 @@ See the [wiki](https://github.com/ishrakr/hbox/wiki) (also in [`wiki/`](wiki/Hom
 [restore](wiki/Restore.md), [updates](wiki/Updates.md),
 [remote access](wiki/Remote-access.md),
 [troubleshooting](wiki/Troubleshooting.md).
+
+## License
+
+HBOX is licensed under the [GNU General Public License, version 2](LICENSE)
+(GPL-2.0-only). The apps it installs (Immich, Nextcloud, Dockge, Backrest,
+restic, Tailscale) keep their own licenses.
