@@ -29,6 +29,15 @@ network values are averages over that minute; the hour of history is kept in
 `sudo hbox doctor` reads it fresh. Virtual disks that report no health are not
 shown.
 
+## Trust this device
+
+**Trust this device** at the bottom opens the steps to install HBOX's
+certificate on the phone, tablet or computer you are using (it picks the
+device; tabs show the others). iPhones and iPads get a configuration profile,
+which installs where the bare certificate file can fail. The dialog shows the
+start of the certificate's fingerprint, the same as in `sudo hbox ca`.
+`https://<address>/#trust` opens it directly, handy to send to someone.
+
 ## Power menu
 
 The power button at the top right opens:

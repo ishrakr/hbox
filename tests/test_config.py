@@ -313,7 +313,7 @@ class ProxyAndRepositoryTests(unittest.TestCase):
             "include /etc/nginx/hbox-apps/*.conf;", "include /etc/nginx/hbox-apps/*.health;",
             "http://immich-server:2283", "https://nextcloud-web:443", "http://hbox-dockge:5001",
             "resolver 127.0.0.11 valid=30s ipv6=off;",
-            "location = /hbox-ca.crt",
+            "location = /hbox-ca.crt", "location = /hbox-ca.mobileconfig",
         ):
             self.assertIn(directive, config)
         self.assertNotIn("localhost:", config)
@@ -363,10 +363,11 @@ class ProxyAndRepositoryTests(unittest.TestCase):
                        *(str(p.relative_to(ROOT)) for p in (ROOT / "migrations").glob("*.sh"))):
             result = subprocess.run(["bash", "-n", str(ROOT / script)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, f"{script}: {result.stderr}")
-        result = subprocess.run(["sh", "-n", str(ROOT / "scripts/generate-certs.sh")],
+        result = subprocess.run(["sh", "-n", str(ROOT / "scripts/generate-certs.sh"), str(ROOT / "scripts/ca-profile.sh")],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        for script in ("install.sh", "scripts/hbox", "scripts/hbox-mdns", "scripts/generate-certs.sh"):
+        for script in ("install.sh", "scripts/hbox", "scripts/hbox-mdns", "scripts/generate-certs.sh",
+                       "scripts/ca-profile.sh"):
             self.assertTrue(os.access(ROOT / script, os.X_OK), f"{script} is not executable")
 
     def test_backrest_is_pinned_and_served_on_6443(self):
@@ -421,6 +422,35 @@ class CertificateTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Refusing to overwrite", result.stderr)
             self.assertEqual(key.read_bytes(), original)
+
+    def test_ca_profile_for_iphone(self):
+        import base64
+        import plistlib
+        with tempfile.TemporaryDirectory(prefix="hbox profile ") as directory:
+            dest, ca = Path(directory) / "certs", Path(directory) / "ca"
+            result = self.run_script(dest, ca)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            path = dest / "hbox-ca.mobileconfig"
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
+            profile = plistlib.loads(path.read_bytes())
+            self.assertEqual(profile["PayloadType"], "Configuration")
+            self.assertEqual(profile["PayloadVersion"], 1)
+            [payload] = profile["PayloadContent"]
+            self.assertEqual(payload["PayloadType"], "com.apple.security.root")
+            # The payload is exactly the published CA, in DER form.
+            der = subprocess.run(["openssl", "x509", "-in", str(dest / "hbox-ca.crt"), "-outform", "DER"],
+                                 capture_output=True, check=True).stdout
+            self.assertEqual(payload["PayloadContent"], der)
+            uuid = re.compile(r"^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-8[0-9A-F]{3}-[0-9A-F]{12}$")
+            self.assertRegex(profile["PayloadUUID"], uuid)
+            self.assertRegex(payload["PayloadUUID"], uuid)
+            self.assertNotEqual(profile["PayloadUUID"], payload["PayloadUUID"])
+            # The same CA always gives the same profile (installing again
+            # replaces it on the device instead of adding a second one).
+            again = Path(directory) / "again.mobileconfig"
+            subprocess.run(["sh", str(ROOT / "scripts/ca-profile.sh"), str(dest / "hbox-ca.crt"), str(again)],
+                           check=True, timeout=30)
+            self.assertEqual(again.read_bytes(), path.read_bytes())
 
     def test_renewal_reuses_the_same_ca(self):
         with tempfile.TemporaryDirectory() as directory:

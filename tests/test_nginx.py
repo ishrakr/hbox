@@ -264,6 +264,12 @@ class NginxSmokeTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(headers["Content-Type"], "application/x-x509-ca-cert")
             self.assertEqual(body, (self.certs / "hbox-ca.crt").read_bytes())
+        # The iPhone profile, with the type Safari offers to install.
+        for secure in (False, True):
+            status, headers, body = self.request("hbox.local", "/hbox-ca.mobileconfig", secure=secure)
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "application/x-apple-aspen-config")
+            self.assertEqual(body, (self.certs / "hbox-ca.mobileconfig").read_bytes())
         # Nothing else in the certificate directory is reachable.
         status, _, _ = self.request("hbox.local", "/selfsigned.key", secure=False)
         self.assertEqual(status, 302)

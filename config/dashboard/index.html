@@ -97,9 +97,73 @@
     </main>
 
     <footer class="muted small">
-      <span id="address"></span><span id="updated"></span>
+      <span id="address"></span>
+      <button id="trust-button" class="link-button" type="button">Trust this device</button>
+      <span id="updated"></span>
     </footer>
   </div>
+
+  <dialog id="trust" class="trust" aria-labelledby="trust-title">
+    <h3 id="trust-title">Trust HBOX on this device</h3>
+    <p class="muted small">
+      HBOX uses its own certificate. Install it once on each phone, tablet and
+      computer: browsers stop warning, and apps such as Immich and Nextcloud
+      can connect.
+    </p>
+    <div class="segmented" role="tablist" aria-label="Device">
+      <button type="button" role="tab" data-os="ios">iPhone / iPad</button>
+      <button type="button" role="tab" data-os="android">Android</button>
+      <button type="button" role="tab" data-os="mac">Mac</button>
+      <button type="button" role="tab" data-os="windows">Windows</button>
+      <button type="button" role="tab" data-os="linux">Linux</button>
+    </div>
+
+    <div class="trust-steps" data-for="ios">
+      <a class="button primary" href="/hbox-ca.mobileconfig">Download the profile</a>
+      <ol>
+        <li>Open this page in <strong>Safari</strong> and tap the button above, then <strong>Allow</strong>.</li>
+        <li>Open <strong>Settings</strong>, tap <strong>Profile Downloaded</strong> at the top (or General → VPN &amp; Device Management → HBOX) and tap <strong>Install</strong>.</li>
+        <li>Go to <strong>Settings → General → About → Certificate Trust Settings</strong> and turn on <strong>HBOX Local Certificate Authority</strong>. Apps stay untrusted until this is on.</li>
+      </ol>
+    </div>
+    <div class="trust-steps" data-for="android" hidden>
+      <a class="button primary" href="/hbox-ca.crt" download="hbox-ca.crt">Download the certificate</a>
+      <ol>
+        <li>Open <strong>Settings → Security → More security settings → Encryption &amp; credentials → Install a certificate → CA certificate</strong> (the names vary a little by phone).</li>
+        <li>Tap <strong>Install anyway</strong> and pick <code>hbox-ca.crt</code> from Downloads.</li>
+      </ol>
+    </div>
+    <div class="trust-steps" data-for="mac" hidden>
+      <a class="button primary" href="/hbox-ca.crt" download="hbox-ca.crt">Download the certificate</a>
+      <ol>
+        <li>Open <code>hbox-ca.crt</code> from Downloads; Keychain Access adds it to the <strong>login</strong> keychain.</li>
+        <li>Double-click <strong>HBOX Local Certificate Authority</strong>, open <strong>Trust</strong> and set <strong>When using this certificate</strong> to <strong>Always Trust</strong>.</li>
+        <li>Quit and reopen the browser.</li>
+      </ol>
+    </div>
+    <div class="trust-steps" data-for="windows" hidden>
+      <a class="button primary" href="/hbox-ca.crt" download="hbox-ca.crt">Download the certificate</a>
+      <ol>
+        <li>Open <code>hbox-ca.crt</code> and click <strong>Install Certificate</strong>.</li>
+        <li>Choose <strong>Local Machine</strong>, then <strong>Place all certificates in the following store → Trusted Root Certification Authorities</strong>.</li>
+        <li>Restart the browser. (Firefox: Settings → Privacy &amp; Security → Certificates → Import, too.)</li>
+      </ol>
+    </div>
+    <div class="trust-steps" data-for="linux" hidden>
+      <a class="button primary" href="/hbox-ca.crt" download="hbox-ca.crt">Download the certificate</a>
+      <ol>
+        <li>Run <code>sudo cp hbox-ca.crt /usr/local/share/ca-certificates/ &amp;&amp; sudo update-ca-certificates</code>.</li>
+        <li>Browsers with their own store (Firefox, Chrome): import it in their certificate settings.</li>
+      </ol>
+    </div>
+
+    <p class="muted small" id="trust-fingerprint" hidden>
+      Certificate fingerprint (SHA-256) starts with <code id="trust-fingerprint-value"></code>.
+    </p>
+    <div class="dialog-actions">
+      <button id="trust-close" class="button" type="button">Done</button>
+    </div>
+  </dialog>
 
   <dialog id="login" aria-labelledby="login-title">
     <form id="login-form" method="dialog">

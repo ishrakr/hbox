@@ -139,6 +139,8 @@ fi
 cp -- "$CA_DIR/ca.crt" "$WORK/hbox-ca.crt"
 chmod 644 "$WORK/hbox-ca.crt"
 mv -f -- "$WORK/hbox-ca.crt" "$DEST/hbox-ca.crt"
+# The same certificate as a profile, for iPhones and iPads.
+sh "$ROOT/scripts/ca-profile.sh" "$DEST/hbox-ca.crt" "$DEST/hbox-ca.mobileconfig"
 
 echo "Created a server certificate (valid $LEAF_DAYS days) in $DEST."
 if [ "$ca_present" -eq 0 ]; then

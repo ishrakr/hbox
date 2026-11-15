@@ -3,6 +3,16 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## v1.3.0 (2026-11-15)
+
+### Added
+- Dashboard: **Trust this device** (bottom of the page, or `/#trust`) shows
+  how to install HBOX's certificate on the device in use, with a download
+  button and the certificate's fingerprint.
+- iPhones and iPads get the certificate as a configuration profile
+  (`/hbox-ca.mobileconfig`), which installs where the bare `.crt` file fails
+  with "unknown error". Created at setup and on update.
+
 ## v1.2.0 (2026-11-15)
 
 ### Added

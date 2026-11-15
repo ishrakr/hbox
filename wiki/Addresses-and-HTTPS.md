@@ -15,6 +15,8 @@ IP, the Tailscale IP and the tailnet name.
 | `https://<address>:<port>/` | Each enabled [optional app](Optional-apps.md) |
 | `/photos`, `/files`, `/admin`, `/backups` | Redirect to the matching port |
 | `http://<address>/hbox-ca.crt` | HBOX's CA certificate |
+| `http://<address>/hbox-ca.mobileconfig` | The same, as a profile for iPhone and iPad |
+| `https://<address>/#trust` | Dashboard: steps to trust HBOX on this device |
 
 On the LAN, `photos.local`, `files.local` and `admin.local` also serve their
 app on the normal port 443.

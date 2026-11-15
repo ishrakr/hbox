@@ -17,16 +17,25 @@ NAS and cloud storage also work: see [Backups](Backups.md).
 ## 2. Trust HBOX's HTTPS
 
 HBOX uses its own certificate authority. Until a device trusts it, browsers
-show a warning. On each device, open `http://hbox.local/hbox-ca.crt` (or
-`http://<server-ip>/hbox-ca.crt`) and install it:
+show a warning and apps such as Immich and Nextcloud may refuse to connect.
 
-| Device | How |
-| --- | --- |
-| Windows | Open the file > Install Certificate > Local Machine > "Trusted Root Certification Authorities" |
-| macOS | Open it in Keychain Access, then set "Always Trust" |
-| iPhone / iPad | Install the profile, then Settings > General > About > Certificate Trust Settings > enable HBOX |
-| Android | Settings > Security > Encryption & credentials > Install a certificate > CA certificate |
-| Linux | Copy to `/usr/local/share/ca-certificates/hbox-ca.crt`, run `sudo update-ca-certificates` |
+**On each device, open the dashboard and choose _Trust this device_ at the
+bottom.** It picks the device you are on, offers the right download and shows
+the steps. Accept the browser's warning once to reach the dashboard.
+
+| Device | Download | Then |
+| --- | --- | --- |
+| iPhone / iPad | Profile (`/hbox-ca.mobileconfig`), in Safari | Settings > Profile Downloaded > Install; then Settings > General > About > Certificate Trust Settings > enable HBOX |
+| Android | `/hbox-ca.crt` | Settings > Security > Encryption & credentials > Install a certificate > CA certificate |
+| macOS | `/hbox-ca.crt` | Open it in Keychain Access, then set "Always Trust" |
+| Windows | `/hbox-ca.crt` | Open the file > Install Certificate > Local Machine > "Trusted Root Certification Authorities" |
+| Linux | `/hbox-ca.crt` | Copy to `/usr/local/share/ca-certificates/`, run `sudo update-ca-certificates` |
+
+Both files are also served over plain HTTP, for example
+`http://hbox.local/hbox-ca.mobileconfig`. On an iPhone, the profile works where
+the bare `.crt` file can fail with "unknown error". The last step on the
+iPhone (Certificate Trust Settings) is easy to miss: without it, Safari still
+warns and apps still refuse.
 
 `sudo hbox ca` prints the same instructions. Trust is kept when the
 certificate is renewed.

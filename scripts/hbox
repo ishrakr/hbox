@@ -435,10 +435,20 @@ issue_certificate() {
 setup_certs() {
     if [ -f "$HBOX_HOME/certs/selfsigned.crt" ] && [ -f "$HBOX_HOME/certs/selfsigned.key" ]; then
         cert_covers_names || renew_certificate
-        return 0
+    else
+        log "Creating the HBOX certificate authority and HTTPS certificate"
+        issue_certificate
     fi
-    log "Creating the HBOX certificate authority and HTTPS certificate"
-    issue_certificate
+    ca_profile_sync
+}
+
+# The CA as an Apple profile (iPhone, iPad), served next to hbox-ca.crt.
+# Servers installed before v1.3.0 have none yet.
+ca_profile_sync() {
+    local ca=$HBOX_HOME/certs/hbox-ca.crt profile=$HBOX_HOME/certs/hbox-ca.mobileconfig
+    [ -f "$ca" ] || return 0
+    [ -f "$profile" ] && [ ! "$ca" -nt "$profile" ] && return 0
+    sh "$HBOX_HOME/scripts/ca-profile.sh" "$ca" "$profile" || warn "Could not create the iPhone certificate profile."
 }
 
 # Registries rate-limit and networks drop; retry with backoff before failing.
@@ -727,7 +737,7 @@ EOF
     [ -n "$ip" ] && printf '    On the LAN by address:    https://%s  (same ports)\n' "$ip" >&2
     [ -n "$ts_name" ] && printf '    Through Tailscale:        https://%s  (same ports)\n' "$ts_name" >&2
     [ -n "$ts_ip" ] && printf '    Through Tailscale by IP:  https://%s  (same ports)\n' "$ts_ip" >&2
-    printf '    Trust HBOX HTTPS on a device: http://%s/hbox-ca.crt\n' "${ip:-hbox.local}" >&2
+    printf '    Trust HBOX HTTPS on a device: dashboard > Trust this device (https://%s/#trust)\n' "${ip:-hbox.local}" >&2
 }
 
 # ---------------------------------------------------------------- commands
@@ -861,17 +871,20 @@ cmd_ca() {
     local ip
     ip=$(primary_ip || true)
     cat <<EOF
-HBOX uses its own certificate authority for HTTPS. Trust it once per device:
+HBOX uses its own certificate authority for HTTPS. Trust it once per device.
+The easiest way: open the dashboard on the device and choose "Trust this
+device" at the bottom (https://${ip:-hbox.local}/#trust). It shows the steps.
 
-  1. On the device, open  http://hbox.local/hbox-ca.crt ${ip:+ (or http://$ip/hbox-ca.crt)}
-  2. Install it as a trusted certificate authority:
-       Windows: open the file > Install Certificate > Local Machine >
-                "Trusted Root Certification Authorities"
-       macOS:   open it in Keychain Access, then set "Always Trust"
-       iPhone:  install the profile, then Settings > General > About >
-                Certificate Trust Settings > enable HBOX
-       Android: Settings > Security > Encryption & credentials >
-                Install a certificate > CA certificate
+Or by hand:
+  iPhone/iPad: in Safari open  http://${ip:-hbox.local}/hbox-ca.mobileconfig
+               Settings > Profile Downloaded > Install, then Settings >
+               General > About > Certificate Trust Settings > enable HBOX
+  Others:      open  http://${ip:-hbox.local}/hbox-ca.crt  and install it:
+    Windows: open the file > Install Certificate > Local Machine >
+             "Trusted Root Certification Authorities"
+    macOS:   open it in Keychain Access, then set "Always Trust"
+    Android: Settings > Security > Encryption & credentials >
+             Install a certificate > CA certificate
 
 The certificate file on this server: $HBOX_HOME/certs/hbox-ca.crt
 EOF

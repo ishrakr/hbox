@@ -544,6 +544,50 @@ function startPower(what, resume = false) {
   }, 4000);
 }
 
+// ---------------------------------------------------------------- trust
+
+// The device this page runs on. iPads report themselves as a Mac.
+function deviceOs() {
+  const agent = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(agent) || (/Macintosh/.test(agent) && navigator.maxTouchPoints > 1)) return "ios";
+  if (/Android/.test(agent)) return "android";
+  if (/Macintosh/.test(agent)) return "mac";
+  if (/Windows/.test(agent)) return "windows";
+  return "linux";
+}
+
+function showTrust(os) {
+  for (const tab of document.querySelectorAll("#trust [data-os]")) {
+    tab.setAttribute("aria-selected", String(tab.dataset.os === os));
+  }
+  for (const steps of document.querySelectorAll("#trust [data-for]")) {
+    steps.hidden = steps.dataset.for !== os;
+  }
+}
+
+// Lets people check they install this server's certificate.
+async function trustFingerprint() {
+  try {
+    const pem = await (await fetch("/hbox-ca.crt", { cache: "no-cache" })).text();
+    const base64 = pem.replace(/-----[^-]+-----|\s/g, "");
+    const der = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", der));
+    $("trust-fingerprint-value").textContent =
+      [...hash.slice(0, 8)].map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join(":");
+    $("trust-fingerprint").hidden = false;
+  } catch {
+    // Without it, the steps still work.
+  }
+}
+
+function openTrust() {
+  showTrust(deviceOs());
+  $("trust").showModal();
+  // The download for this device, not whichever tab comes first.
+  document.querySelector("#trust .trust-steps:not([hidden]) .button").focus();
+  trustFingerprint();
+}
+
 function greeting() {
   const hour = new Date().getHours();
   if (hour < 5) return "Good night";
@@ -573,6 +617,12 @@ async function main() {
     if (["done", "failed"].includes(power.state)) { power.dismissed = true; renderPower(); }
   });
   $("login-cancel").addEventListener("click", () => $("login").close());
+  $("trust-button").addEventListener("click", openTrust);
+  $("trust-close").addEventListener("click", () => $("trust").close());
+  for (const tab of document.querySelectorAll("#trust [data-os]")) {
+    tab.addEventListener("click", () => showTrust(tab.dataset.os));
+  }
+  if (location.hash === "#trust") openTrust();
   $("login-form").addEventListener("submit", submitLogin);
 
   try {
