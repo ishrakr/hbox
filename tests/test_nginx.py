@@ -112,6 +112,12 @@ class NginxSmokeTests(unittest.TestCase):
         # Only remap deployment paths and ports. All virtual-host logic, DNS
         # service names, TLS, headers and redirects remain the actual config.
         config = config.replace("/etc/nginx/ssl", str(cls.certs))
+        # Every test connects from 127.0.0.1. Keying the actions' rate limit on
+        # a test header too gives each test its own budget; rate and burst stay
+        # exactly as configured (test_action_login_is_rate_limited).
+        zone = "limit_req_zone $binary_remote_addr zone=hbox_actions"
+        assert zone in config
+        config = config.replace(zone, "limit_req_zone $binary_remote_addr$http_x_test_client zone=hbox_actions")
         # The mounted dashboard, plus files the host writes.
         config = config.replace("/usr/share/nginx/hbox-dashboard", str(ROOT / "config/dashboard"))
         cls.status = cls.directory / "status"
@@ -167,6 +173,7 @@ class NginxSmokeTests(unittest.TestCase):
         path.write_text(
             f"daemon off;\nmaster_process off;\npid {cls.directory}/nginx.pid;\n"
             "error_log stderr;\nevents {}\nhttp {\naccess_log off;\n"
+
             # The image's main nginx.conf includes mime.types; these are the ones used.
             "types { text/html html; text/css css; application/javascript js;"
             " application/json json; image/svg+xml svg; }\ndefault_type application/octet-stream;\n"
@@ -350,11 +357,22 @@ class NginxSmokeTests(unittest.TestCase):
                     self.assertEqual(data["service"], service)
                     self.assertEqual(data["host"], f"{host}:{port}")
 
+    def test_action_login_is_rate_limited(self):
+        import base64
+        bad = "Basic " + base64.b64encode(b"admin:wrong").decode()
+        headers = {"X-HBOX-Action": "1", "Authorization": bad, "X-Test-Client": "rate"}
+        codes = [self.request("hbox.local", "/api/power/restart", method="PUT", body="1", headers=headers)[0]
+                 for _ in range(10)]
+        # One allowed plus a burst of 5, then refused while guessing continues.
+        self.assertEqual(codes[:6], [403] * 6)
+        self.assertEqual(codes[6:], [503] * 4)
+        self.assertFalse((self.requests / "restart").exists())
+
     def test_dashboard_buttons_request_actions_safely(self):
         import base64
         good = "Basic " + base64.b64encode(b"admin:secret").decode()
         bad = "Basic " + base64.b64encode(b"admin:wrong").decode()
-        action = {"X-HBOX-Action": "1"}
+        action = {"X-HBOX-Action": "1", "X-Test-Client": "buttons"}
         # Without the custom header (e.g. a form on another site): refused.
         self.assertEqual(self.request("hbox.local", "/api/check", method="PUT", body="1")[0], 403)
         # Only PUT is allowed; GET never reads the folder.
@@ -377,10 +395,38 @@ class NginxSmokeTests(unittest.TestCase):
                                     headers={**action, "Authorization": good})
         self.assertIn(status, (201, 204))
         self.assertTrue((self.requests / "update").exists())
+        # Power actions: the same header and login, one fixed file each.
+        powers = ["apps-restart", "apps-start", "apps-stop", "restart", "shutdown"]
+        refused = [("/api/power/restart", {"Authorization": good, "X-Test-Client": "refused"}),  # no header
+                   ("/api/power/shutdown", {**action, "X-Test-Client": "refused"}),             # no login
+                   ("/api/power/shutdown", {**action, "Authorization": bad, "X-Test-Client": "refused"})]
+        for path, headers in refused:
+            with self.subTest(refused=path, headers=sorted(headers)):
+                self.assertEqual(self.request("hbox.local", path, method="PUT", body="1", headers=headers)[0], 403)
+        self.assertFalse((self.requests / "restart").exists())
+        self.assertFalse((self.requests / "shutdown").exists())
+        for name in powers:
+            with self.subTest(power=name):
+                status, _, _ = self.request("hbox.local", f"/api/power/{name}", method="PUT", body="1",
+                                            headers={**action, "Authorization": good, "X-Test-Client": name})
+                self.assertIn(status, (201, 204))
+                self.assertTrue((self.requests / name).exists())
         # Nothing else can be written there.
-        status, _, _ = self.request("hbox.local", "/api/other", method="PUT", body="1", headers=action)
-        self.assertNotIn(status, (201, 204))
-        self.assertEqual(sorted(p.name for p in self.requests.iterdir()), ["check", "update"])
+        # (A path like /api/power/../update is normalised by nginx to
+        # /api/update, the update button itself.)
+        for path in ("/api/other", "/api/power/other", "/api/power/restart/x", "/api/power/%2e%2e%2fescape",
+                     "/api/power/..%2f..%2fescape", "/api/power/restart%00"):
+            with self.subTest(path=path):
+                status, _, _ = self.request("hbox.local", path, method="PUT", body="1",
+                                            headers={**action, "Authorization": good, "X-Test-Client": path})
+                self.assertNotIn(status, (201, 204))
+        self.assertEqual(sorted(p.name for p in self.requests.iterdir()), sorted(["check", "update", *powers]))
+        self.assertFalse((self.directory / "escape").exists())
+        # Progress is readable and never cached.
+        (self.status / "power.json").write_text('{"state": "idle"}')
+        status, headers, _ = self.request("hbox.local", "/power.json")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Cache-Control"], "no-store")
 
     def test_nextcloud_discovery_redirects(self):
         for path in ("carddav", "caldav"):

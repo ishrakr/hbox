@@ -17,14 +17,14 @@ tailnet can connect.
 | Photos, Files | Their own accounts |
 | Admin (Dockge) | Administrator login; anyone with it controls the server (Docker is root access) |
 | Backups (Backrest) | Administrator login; Backrest listens only on Docker's internal bridge |
-| Dashboard update button | Administrator login, rate-limited; nginx can only drop a request file |
+| Dashboard update button and power menu | Administrator login, rate-limited; nginx can only drop a request file |
 | Backups | Encrypted with the repository password, which is never stored in the backup itself |
 | Secrets | `/etc/hbox` and `.env` are readable by root only |
 
 ## Passwords
 
 - The administrator password is generated at install: `sudo hbox credentials`.
-  It is used by Files, Photos (by e-mail), Admin, Backups and the update button.
+  It is used by Files, Photos (by e-mail), Admin, Backups, the update button and the power menu.
 - Change it in each app's own settings. For Backups and the update button,
   edit `ADMIN_PASSWORD` in `/etc/hbox/credentials` and run `sudo hbox update`.
 - Database passwords are random and never needed by hand.

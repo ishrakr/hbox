@@ -3,6 +3,16 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## Unreleased
+
+### Added
+- Dashboard: **power menu** (power button, top right) with Restart apps,
+  Stop/Start apps, Restart server and Shut down server. Each asks for the
+  HBOX administrator login and a confirmation, and waits for a running
+  backup, update or restore to finish first. Stopped apps stay stopped across
+  restarts until started again. After a server restart the page reconnects on
+  its own.
+
 ## v1.1.0 (2026-11-15)
 
 ### Added

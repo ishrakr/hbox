@@ -19,10 +19,29 @@
           <p id="greeting" class="muted">Your home server</p>
         </div>
       </div>
-      <div id="overall" class="pill" hidden>
-        <span class="pill-dot"></span><span id="overall-text"></span>
+      <div class="top-actions">
+        <div id="overall" class="pill" hidden>
+          <span class="pill-dot"></span><span id="overall-text"></span>
+        </div>
+        <div class="power">
+          <button id="power-button" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="power-menu" title="Power">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9"/><path d="M6.4 6.6a8 8 0 1 0 11.2 0"/></svg>
+            <span class="visually-hidden">Power</span>
+          </button>
+          <div id="power-menu" class="menu" role="menu" hidden>
+            <button type="button" role="menuitem" data-power="apps-restart">Restart apps</button>
+            <button type="button" role="menuitem" data-power="apps-stop" id="power-apps-stop">Stop apps</button>
+            <button type="button" role="menuitem" data-power="apps-start" id="power-apps-start" hidden>Start apps</button>
+            <hr>
+            <button type="button" role="menuitem" data-power="restart">Restart server</button>
+            <button type="button" role="menuitem" data-power="shutdown" class="danger">Shut down server</button>
+          </div>
+        </div>
       </div>
     </header>
+    <div id="power-banner" class="banner" role="status" aria-live="polite" hidden>
+      <span class="spinner" aria-hidden="true"></span><span id="power-banner-text"></span>
+    </div>
 
     <main>
       <div id="sections"></div>
@@ -85,9 +104,12 @@
   <dialog id="login" aria-labelledby="login-title">
     <form id="login-form" method="dialog">
       <h3 id="login-title">Install the update</h3>
-      <p class="muted small">
+      <p id="login-text" class="muted small">
         HBOX backs up first, then updates. Apps may be unavailable for a few
-        minutes. Sign in with the HBOX administrator account
+        minutes.
+      </p>
+      <p class="muted small">
+        Sign in with the HBOX administrator account
         (<code>sudo hbox credentials</code>).
       </p>
       <label>User name
@@ -99,7 +121,7 @@
       <p id="login-error" class="error small" role="alert" hidden></p>
       <div class="dialog-actions">
         <button id="login-cancel" class="button" type="button">Cancel</button>
-        <button class="button primary" type="submit">Update now</button>
+        <button id="login-submit" class="button primary" type="submit">Update now</button>
       </div>
     </form>
   </dialog>

@@ -945,6 +945,7 @@ cmd_status_update() {
     memory=$(awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} /^SwapTotal:/ {st = $2} /^SwapFree:/ {sf = $2}
         END {printf "{\"total\": %d, \"used\": %d, \"swap_total\": %d, \"swap_used\": %d}", t * 1024, (t - a) * 1024, st * 1024, (st - sf) * 1024}' /proc/meminfo)
     disk_health_refresh 2>/dev/null || true
+    power_after_boot 2>/dev/null || true
     [ -s "$HBOX_DISK_HEALTH" ] && health=$(cat "$HBOX_DISK_HEALTH")
     if usage=$(usage_sample 2>/dev/null) && [ -n "$usage" ]; then
         printf '%s\n' "$usage" > "$HBOX_USAGE_STATE.tmp" && mv -f "$HBOX_USAGE_STATE.tmp" "$HBOX_USAGE_STATE"
@@ -957,6 +958,7 @@ cmd_status_update() {
     jq -n \
         --argjson usage "$usage" --argjson load "${load:-0}" --argjson cpus "$cpus" \
         --argjson memory "$memory" --argjson health "$health" \
+        --argjson apps_stopped "$([ -f "$HBOX_APPS_STOPPED" ] && echo true || echo false)" \
         --argjson total "${total:-0}" --argjson used "${used:-0}" \
         --argjson configured "$configured" --arg result "$result" \
         --arg time "$time" --arg next "$next" --argjson summary "$summary" \
@@ -965,6 +967,7 @@ cmd_status_update() {
         --argjson behind "$behind" \
         --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{updated: $updated, disk: {total: $total, used: $used},
+          apps_stopped: $apps_stopped,
           system: {cpus: $cpus, load: $load, memory: $memory,
                    history: [($usage.history // [])[] | {t, cpu, rx, tx, mem}]},
           disks: [($health.disks // [])[] | {role, model, status, temperature, problems}],

@@ -275,6 +275,7 @@ async function loadStatus() {
   $("server").hidden = false;
 
   renderVitals(status);
+  renderPowerMenu();
 
   const backup = status.backup || {};
   const text = $("backup-text");
@@ -402,7 +403,24 @@ async function checkForUpdates() {
   }
 }
 
-function openLogin() {
+// The login dialog serves the update and every power action.
+const LOGIN_TEXTS = {
+  update: ["Install the update", "HBOX backs up first, then updates. Apps may be unavailable for a few minutes.", "Update now", false],
+  "apps-restart": ["Restart the apps?", "Photos, Files and optional apps stop and start again. They are unavailable for a minute or two.", "Restart apps", false],
+  "apps-stop": ["Stop the apps?", "Photos, Files and optional apps stop until you start them again, also after a restart. The dashboard, Admin, Backups and remote access keep running.", "Stop apps", true],
+  "apps-start": ["Start the apps?", "Photos, Files and optional apps start again.", "Start apps", false],
+  restart: ["Restart the server?", "Everything is unavailable for a few minutes, including remote access. HBOX waits for a running backup or update to finish first.", "Restart server", true],
+  shutdown: ["Shut down the server?", "The server turns off. It cannot be started from here: someone has to press its power button. HBOX waits for a running backup or update to finish first.", "Shut down", true],
+};
+let loginFor = "update";
+
+function openLogin(what = "update") {
+  loginFor = typeof what === "string" ? what : "update";
+  const [title, text, submit, danger] = LOGIN_TEXTS[loginFor];
+  $("login-title").textContent = title;
+  $("login-text").textContent = text;
+  $("login-submit").textContent = submit;
+  $("login-submit").classList.toggle("danger", danger);
   $("login-error").hidden = true;
   $("login-password").value = "";
   $("login").showModal();
@@ -416,7 +434,8 @@ async function submitLogin(event) {
   const bytes = new TextEncoder().encode(`${user}:${password}`);
   const auth = btoa(String.fromCharCode(...bytes));
   try {
-    const response = await request("/api/update", { Authorization: `Basic ${auth}` });
+    const path = loginFor === "update" ? "/api/update" : `/api/power/${loginFor}`;
+    const response = await request(path, { Authorization: `Basic ${auth}` });
     if (response.status === 403 || response.status === 401) {
       $("login-error").textContent = "That user name or password is not right.";
       $("login-error").hidden = false;
@@ -430,6 +449,10 @@ async function submitLogin(event) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     try { localStorage.setItem("hbox-user", user); } catch { /* private mode */ }
     $("login").close();
+    if (loginFor !== "update") {
+      startPower(loginFor);
+      return;
+    }
     action = { state: "updating", since: new Date(Date.now() - 2000) };
     renderProgress();
     startPolling();
@@ -437,6 +460,88 @@ async function submitLogin(event) {
     $("login-error").textContent = `Could not reach the server (${error.message}).`;
     $("login-error").hidden = false;
   }
+}
+
+// ---------------------------------------------------------------- power
+
+let power = { state: "idle" };
+let powerTimer = null;
+const POWER_BUSY = ["restart", "shutdown", "apps-restart", "apps-stop", "apps-start"];
+
+function toggleMenu(open) {
+  const menu = $("power-menu");
+  const show = open ?? menu.hidden;
+  menu.hidden = !show;
+  $("power-button").setAttribute("aria-expanded", String(show));
+  if (show) menu.querySelector("button:not([hidden])").focus();
+}
+
+function renderPowerMenu() {
+  const stopped = serverStatus.apps_stopped === true;
+  $("power-apps-stop").hidden = stopped;
+  $("power-apps-start").hidden = !stopped;
+}
+
+function renderPower() {
+  const banner = $("power-banner");
+  const text = $("power-banner-text");
+  const busy = POWER_BUSY.includes(power.state) || power.state === "waiting";
+  banner.hidden = !(busy || ["done", "failed", "off"].includes(power.state)) || power.dismissed;
+  banner.className = `banner ${busy ? "busy" : power.state}`;
+  if (power.state === "waiting") {
+    text.textContent = power.restarting
+      ? "The server is restarting. This page reconnects when it is back…"
+      : "Waiting for the server…";
+  } else {
+    text.textContent = power.message || "";
+  }
+  $("power-button").disabled = busy;
+}
+
+async function loadPower() {
+  try {
+    const response = await fetch("/power.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(String(response.status));
+    const next = await response.json();
+    if (power.since && new Date(next.time) < power.since) return true;
+    // Shown only for a while after it happened, and only once per page.
+    const age = Date.now() - new Date(next.time).getTime();
+    if (!POWER_BUSY.includes(next.state) && age > 10 * 60000 && !power.since) {
+      power = { state: "idle" };
+    } else {
+      power = { ...next, since: power.since, restarting: power.restarting };
+    }
+    renderPower();
+    return true;
+  } catch {
+    // nginx stops while the server restarts.
+    if (power.restarting || power.state === "restart") {
+      power = { state: "waiting", restarting: true, since: power.since };
+      renderPower();
+    }
+    return false;
+  }
+}
+
+function startPower(what, resume = false) {
+  power = resume
+    ? { ...power, restarting: what === "restart" }
+    : { state: what, message: "Sent. Waiting for the server…", since: new Date(Date.now() - 2000),
+        restarting: what === "restart" };
+  renderPower();
+  clearInterval(powerTimer);
+  powerTimer = setInterval(async () => {
+    const reachable = await loadPower();
+    if (power.state === "off") {
+      clearInterval(powerTimer);
+    } else if (reachable && !POWER_BUSY.includes(power.state) && power.state !== "waiting") {
+      clearInterval(powerTimer);
+      await loadStatus();
+      renderPowerMenu();
+      checkHealth();
+      if (power.restarting && power.state === "done") setTimeout(() => location.reload(), 3000);
+    }
+  }, 4000);
 }
 
 function greeting() {
@@ -453,7 +558,20 @@ async function main() {
   $("backup-open").href = `https://${location.hostname}:6443/`;
   try { $("login-user").value = localStorage.getItem("hbox-user") || ""; } catch { /* private mode */ }
   $("check-button").addEventListener("click", checkForUpdates);
-  $("update-button").addEventListener("click", openLogin);
+  $("update-button").addEventListener("click", () => openLogin("update"));
+  $("power-button").addEventListener("click", (event) => { event.stopPropagation(); toggleMenu(); });
+  for (const item of document.querySelectorAll("[data-power]")) {
+    item.addEventListener("click", () => { toggleMenu(false); openLogin(item.dataset.power); });
+  }
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".power")) toggleMenu(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("power-menu").hidden) { toggleMenu(false); $("power-button").focus(); }
+  });
+  $("power-banner").addEventListener("click", () => {
+    if (["done", "failed"].includes(power.state)) { power.dismissed = true; renderPower(); }
+  });
   $("login-cancel").addEventListener("click", () => $("login").close());
   $("login-form").addEventListener("submit", submitLogin);
 
@@ -473,6 +591,10 @@ async function main() {
   // Pick up an update that is already running (e.g. started from another device).
   await loadAction();
   if (action.state === "checking" || action.state === "updating") startPolling();
+  renderPowerMenu();
+  // Pick up a power action that is still running (another device, a reload).
+  await loadPower();
+  if (POWER_BUSY.includes(power.state)) startPower(power.state, true);
   setInterval(checkHealth, 30000);
   setInterval(loadStatus, 60000);
 }

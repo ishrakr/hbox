@@ -29,6 +29,25 @@ network values are averages over that minute; the hour of history is kept in
 `sudo hbox doctor` reads it fresh. Virtual disks that report no health are not
 shown.
 
+## Power menu
+
+The power button at the top right opens:
+
+| Action | What happens |
+| --- | --- |
+| **Restart apps** | Photos, Files and optional apps stop and start again (a minute or two) |
+| **Stop apps** | They stay stopped, also after a restart, until **Start apps**. The dashboard, Admin, Backups and remote access keep running |
+| **Restart server** | Reboots; everything is back in a few minutes, and the page reconnects on its own |
+| **Shut down server** | Powers off. It cannot be started from the dashboard: press the server's power button |
+
+Each asks for the HBOX administrator login, as the update button does. HBOX
+first waits (up to 30 minutes) for a running backup, update or restore to
+finish, so none is cut off. Progress is shown at the top of the page;
+`/var/lib/hbox/power.log` has the details of the last app action.
+
+Over Tailscale, a restart drops your connection until the server is back, and
+after a shutdown the server stays off until someone presses its power button.
+
 ## Update button
 
 **Update now** asks for the HBOX administrator login (`sudo hbox credentials`)
@@ -38,7 +57,8 @@ shown on the page, and it reloads when done. The output of the last run is in
 
 How it works: nginx can only drop a request file into `/var/lib/hbox/requests`.
 `hbox-dashboard.path` notices it and runs `hbox dashboard-actions` as root,
-which reports progress in `/var/lib/hbox/dashboard/update.json`. Login
+which reports progress in `/var/lib/hbox/dashboard/update.json` (power
+actions: `power.json`). Login
 attempts are rate-limited, and requests need a custom header, so other web
 pages cannot trigger them.
 

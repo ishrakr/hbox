@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -286,6 +287,20 @@ class AppsAndPatchesTests(unittest.TestCase):
 
 
 class ProxyAndRepositoryTests(unittest.TestCase):
+    def test_every_dashboard_action_is_locked_down(self):
+        config = (ROOT / "config/nginx/default.conf").read_text()
+        self.assertIn("limit_req_zone $binary_remote_addr zone=hbox_actions:1m rate=10r/m;", config)
+        blocks = re.findall(r"location [^{]*/api/[^{]*\{(.*?)\n    \}", config, re.S)
+        self.assertEqual(len(blocks), 3)  # check, update, power
+        for block in blocks:
+            with self.subTest(block=block.strip().splitlines()[0]):
+                self.assertIn("limit_except PUT { deny all; }", block)
+                self.assertIn('if ($http_x_hbox_action != "1") { return 403; }', block)
+                self.assertIn("limit_req zone=hbox_actions", block)
+                self.assertIn("client_max_body_size 1k;", block)
+        for block in blocks[1:]:  # everything except the update check needs the login
+            self.assertIn("auth_basic_user_file /etc/nginx/hbox-auth/htpasswd;", block)
+
     def test_hostnames_and_service_dns(self):
         config = (ROOT / "config/nginx/default.conf").read_text()
         for directive in (
