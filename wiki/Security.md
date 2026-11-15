@@ -13,7 +13,7 @@ tailnet can connect.
 
 | | Protection |
 | --- | --- |
-| All web traffic | HTTPS with HBOX's own CA; apps' direct ports listen on localhost only |
+| All web traffic | HTTPS with HBOX's own CA, which can only vouch for HBOX's names ([details](Addresses-and-HTTPS.md#what-the-ca-can-vouch-for)); apps' direct ports listen on localhost only |
 | Photos, Files | Their own accounts |
 | Admin (Dockge) | Administrator login; anyone with it controls the server (Docker is root access) |
 | Backups (Backrest) | Administrator login; Backrest listens only on Docker's internal bridge |

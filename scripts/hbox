@@ -60,6 +60,8 @@ Remote access and devices
   certs renew            Issue a new HTTPS certificate (devices keep trust)
   certs names            List the extra names/IPs the certificate covers
   ca                     Show how to trust HBOX's HTTPS on your devices
+  ca renew               New certificate authority limited to HBOX's names
+                         (every device must trust it again)
 
 Installation
   setup [options]        Configure and start HBOX (run by the installer)
@@ -416,11 +418,13 @@ cert_names() {
     } | sed '/^$/d' | sort -u | paste -sd, -
 }
 
-# True when the certificate covers every current name and address.
+# True when the certificate covers every current name and address, except
+# those the CA may not vouch for (see generate-certs.sh).
 cert_covers_names() {
-    local cert=$HBOX_HOME/certs/selfsigned.crt name
+    local cert=$HBOX_HOME/certs/selfsigned.crt excluded=$HBOX_HOME/certs/names-excluded name
     [ -f "$cert" ] || return 1
     for name in $(cert_names | tr ',' ' '); do
+        [ -f "$excluded" ] && grep -qxF -- "$name" "$excluded" && continue
         openssl x509 -noout -checkhost "$name" -in "$cert" 2>/dev/null | grep -q 'does match' && continue
         openssl x509 -noout -checkip "$name" -in "$cert" 2>/dev/null | grep -q 'does match' && continue
         return 1
@@ -813,6 +817,10 @@ cmd_doctor() {
         done < <(jq -r '.disks[]? | [.path, (if .role == "backup" then "backup" else "server" end), .model, .status, (.problems | join(", "))] | @tsv' "$HBOX_DISK_HEALTH" 2>/dev/null)
     fi
     check "HTTPS certificate valid for 30+ days" "openssl x509 -checkend 2592000 -noout -in '$HBOX_HOME/certs/selfsigned.crt'" "sudo hbox certs renew"
+    if [ -s "$HBOX_HOME/certs/names-excluded" ]; then
+        check "HTTPS certificate covers every address" "false" \
+            "$(paste -sd, "$HBOX_HOME/certs/names-excluded") are outside the HBOX CA's names; use the server's other addresses, or replace the CA: sudo hbox ca renew --force"
+    fi
     for c in hbox-nginx immich-server immich-postgres nextcloud nextcloud-db hbox-dockge; do
         check "$c is running" "container_running $c" "sudo hbox start; sudo hbox logs $c"
     done
@@ -867,7 +875,67 @@ cmd_certs() {
     esac
 }
 
+# True when the CA is limited to HBOX's names (CAs before v1.4.0 are not).
+ca_is_limited() {
+    openssl x509 -in "$HBOX_CA_DIR/ca.crt" -noout -text 2>/dev/null | grep -q 'X509v3 Name Constraints'
+}
+
+# A new CA, limited to HBOX's names, and a certificate from it. Every device
+# has to trust the new CA again; the old one stops working.
+ca_renew() {
+    local ts dir=$HBOX_HOME/certs force=0
+    while [ "$#" -gt 0 ]; do
+        case $1 in
+            --yes | -y) export HBOX_ASSUME_YES=1 ;;
+            --force) force=1 ;;
+            *) die "Unknown option for ca renew: $1" ;;
+        esac
+        shift
+    done
+    ts=$(date +%Y%m%d%H%M%S)
+    if ca_is_limited && [ "$force" = 0 ]; then
+        die "The HBOX CA is already limited to HBOX's names. Use --force to replace it anyway."
+    fi
+    cat >&2 <<EOF
+This replaces HBOX's certificate authority with a new one that can only vouch
+for HBOX's own names and addresses. Every phone, tablet and computer that
+trusts the current one must install the new one (dashboard > Trust this
+device); until then they show certificate warnings and apps such as Immich
+and Nextcloud cannot connect.
+EOF
+    confirm "Replace the HBOX certificate authority?" || die "Cancelled."
+    mv -- "$HBOX_CA_DIR" "$HBOX_CA_DIR.old-$ts"
+    mv -- "$dir/selfsigned.crt" "$dir/selfsigned.crt.old-$ts"
+    mv -- "$dir/selfsigned.key" "$dir/selfsigned.key.old-$ts"
+    if ! issue_certificate; then
+        rm -rf -- "$HBOX_CA_DIR"
+        mv -- "$HBOX_CA_DIR.old-$ts" "$HBOX_CA_DIR"
+        mv -f -- "$dir/selfsigned.crt.old-$ts" "$dir/selfsigned.crt"
+        mv -f -- "$dir/selfsigned.key.old-$ts" "$dir/selfsigned.key"
+        cp -- "$HBOX_CA_DIR/ca.crt" "$dir/hbox-ca.crt"
+        sh "$HBOX_HOME/scripts/ca-profile.sh" "$dir/hbox-ca.crt" "$dir/hbox-ca.mobileconfig" || true
+        die "Could not create a new certificate authority; the old one is back."
+    fi
+    rm -f -- "$dir"/selfsigned.*.old-*
+    # The old CA's key can sign nothing anyone should trust any more.
+    rm -rf -- "$HBOX_CA_DIR.old-$ts"
+    if container_running hbox-nginx; then
+        docker exec hbox-nginx nginx -s reload >/dev/null 2>&1 || stack_compose hbox-core restart hbox-nginx
+    fi
+    log "New HBOX certificate authority, fingerprint (SHA-256) $(ca_fingerprint)"
+    log "Trust it on each device: open the dashboard and choose Trust this device."
+}
+
+ca_fingerprint() {
+    openssl x509 -in "$HBOX_HOME/certs/hbox-ca.crt" -noout -fingerprint -sha256 | sed 's/.*=//' | cut -c1-23
+}
+
 cmd_ca() {
+    case ${1:-} in
+        renew) require_root; require_env; shift; ca_renew "$@"; return ;;
+        '') ;;
+        *) die "Usage: hbox ca | hbox ca renew" ;;
+    esac
     local ip
     ip=$(primary_ip || true)
     cat <<EOF
@@ -887,7 +955,12 @@ Or by hand:
              Install a certificate > CA certificate
 
 The certificate file on this server: $HBOX_HOME/certs/hbox-ca.crt
+Its fingerprint (SHA-256) starts with $(ca_fingerprint 2>/dev/null)
 EOF
+    if [ -r "$HBOX_CA_DIR/ca.crt" ] && ! ca_is_limited; then
+        printf '\nThis CA is not limited to HBOX'"'"'s names (created before v1.4.0).\n' >&2
+        printf 'Replace it with a limited one: sudo hbox ca renew (devices must trust it again)\n' >&2
+    fi
 }
 
 # Write the disk and backup facts the dashboard shows. Contains no secrets:
@@ -1127,7 +1200,7 @@ main() {
             cmd_tailscale "$HBOX_COMMAND" "$@"
             ;;
         certs) cmd_certs "$@" ;;
-        ca) cmd_ca ;;
+        ca) cmd_ca "$@" ;;
         maintenance) cmd_maintenance ;;
         status-update) require_root; cmd_status_update ;;
         dashboard-actions) cmd_dashboard_actions ;;

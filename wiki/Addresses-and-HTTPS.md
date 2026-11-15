@@ -61,3 +61,25 @@ names, hostname, LAN IP, Tailscale IP and tailnet name, and
 
 The CA is included in backups, so a restored server is trusted by the same
 devices.
+
+### What the CA can vouch for
+
+A device that trusts a CA accepts any certificate it signs, so HBOX limits its
+CA with X.509 name constraints. Devices reject a certificate from it for any
+other name, even if its key were stolen. It may only vouch for:
+
+- `.local`, `.lan`, `.home`, `.home.arpa`, `.internal` names, `localhost`
+  and the short names `hbox`, `photos`, `files`, `admin`;
+- private and Tailscale addresses: `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`, `100.64.0.0/10`, `127.0.0.0/8`, `::1`, `fc00::/7`;
+- your tailnet (`*.<tailnet>.ts.net`), or any tailnet if Tailscale was not
+  connected when the CA was created;
+- names and public addresses in `HBOX_EXTRA_NAMES` when the CA was created.
+
+A name added later outside these is left out of the certificate (`sudo hbox
+doctor` lists it). To include it, replace the CA: `sudo hbox ca renew --force`.
+
+CAs created before v1.4.0 have no limits; `sudo hbox ca` says so. Replace one
+with `sudo hbox ca renew`. Every device then has to trust the new CA (dashboard
+> **Trust this device**); until then, browsers warn and apps such as Immich
+cannot connect. The old CA's key is deleted.

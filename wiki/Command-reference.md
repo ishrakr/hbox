@@ -52,6 +52,7 @@ Run as root (`sudo hbox ...`). `hbox help` shows the same list.
 | `hbox certs renew` | Issue a new HTTPS certificate (devices keep trust) |
 | `hbox certs names` | Names and IPs the certificate covers |
 | `hbox ca` | How to trust HBOX's HTTPS on devices |
+| `hbox ca renew [--force] [--yes]` | New certificate authority, limited to HBOX's names; every device must trust it again ([details](Addresses-and-HTTPS.md#what-the-ca-can-vouch-for)) |
 
 ## Installation
 

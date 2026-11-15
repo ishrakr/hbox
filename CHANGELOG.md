@@ -3,6 +3,18 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## v1.4.0 (2026-11-15)
+
+### Security
+- HBOX's certificate authority is now limited by **name constraints** to
+  HBOX's own names and addresses (`.local` and other home-network names,
+  private and Tailscale addresses, the server's tailnet). Devices that trust it
+  reject anything else it signs, even if its key were stolen.
+- `sudo hbox ca renew` replaces a CA created before this version with a
+  limited one (every device must trust it again). `sudo hbox ca` says when the
+  CA is not limited and shows its fingerprint; `hbox doctor` lists any address
+  the CA cannot cover.
+
 ## v1.3.0 (2026-11-15)
 
 ### Added

@@ -423,6 +423,76 @@ class CertificateTests(unittest.TestCase):
             self.assertIn("Refusing to overwrite", result.stderr)
             self.assertEqual(key.read_bytes(), original)
 
+    def sign_probe(self, ca, san):
+        """A certificate for one name, signed by the CA, as an attacker with the key would."""
+        with tempfile.TemporaryDirectory(prefix="hbox probe ") as directory:
+            work = Path(directory)
+            subprocess.run(["openssl", "req", "-new", "-nodes", "-newkey", "ec", "-pkeyopt",
+                            "ec_paramgen_curve:P-256", "-keyout", str(work / "k"), "-out", str(work / "csr"),
+                            "-subj", "/CN=probe"], capture_output=True, check=True)
+            (work / "ext").write_text(f"subjectAltName = {san}\n")
+            subprocess.run(["openssl", "x509", "-req", "-in", str(work / "csr"), "-CA", str(ca / "ca.crt"),
+                            "-CAkey", str(ca / "ca.key"), "-set_serial", "1", "-days", "1",
+                            "-extfile", str(work / "ext"), "-out", str(work / "crt")],
+                           capture_output=True, check=True)
+            return subprocess.run(["openssl", "verify", "-CAfile", str(ca / "ca.crt"), str(work / "crt")],
+                                  capture_output=True, text=True).returncode == 0
+
+    def test_ca_only_vouches_for_hbox_names(self):
+        with tempfile.TemporaryDirectory(prefix="hbox constraints ") as directory:
+            dest, ca = Path(directory) / "certs", Path(directory) / "ca"
+            names = "100.73.132.128,192.168.1.79,hbox,hbox.local,hbox.tail6328e7.ts.net"
+            result = subprocess.run(["sh", str(ROOT / "scripts/generate-certs.sh"), str(dest), str(ca)],
+                                    capture_output=True, text=True, timeout=60,
+                                    env={**os.environ, "HBOX_CERT_NAMES": names})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("X509v3 Name Constraints: critical", self.openssl("x509", "-in", str(ca / "ca.crt"),
+                                                                             "-noout", "-text"))
+            for san in ("DNS:hbox.local", "DNS:photos.local", "DNS:hbox", "DNS:hbox.tail6328e7.ts.net",
+                        "DNS:nas.lan", "DNS:hbox.home.arpa", "IP:192.168.1.79", "IP:10.0.0.5",
+                        "IP:100.73.132.128", "IP:fd7a:115c:a1e0::1", "IP:127.0.0.1"):
+                with self.subTest(allowed=san):
+                    self.assertTrue(self.sign_probe(ca, san))
+            for san in ("DNS:www.example.com", "DNS:accounts.google.com", "DNS:local.evil.com",
+                        "DNS:other.tail9999.ts.net", "DNS:ts.net", "IP:8.8.8.8", "IP:2001:4860::8888"):
+                with self.subTest(refused=san):
+                    self.assertFalse(self.sign_probe(ca, san))
+            # The real certificate verifies and is unaffected.
+            verify = subprocess.run(["openssl", "verify", "-CAfile", str(dest / "hbox-ca.crt"),
+                                     str(dest / "selfsigned.crt")], capture_output=True, text=True)
+            self.assertEqual(verify.returncode, 0, verify.stderr)
+            self.assertFalse((dest / "names-excluded").exists())
+
+            # A name added later that the CA may not vouch for is left out (and
+            # listed), instead of making devices reject the whole certificate.
+            for name in ("selfsigned.crt", "selfsigned.key"):
+                (dest / name).unlink()
+            result = subprocess.run(["sh", str(ROOT / "scripts/generate-certs.sh"), str(dest), str(ca)],
+                                    capture_output=True, text=True, timeout=60,
+                                    env={**os.environ, "HBOX_CERT_NAMES": names + ",nas.example.org,203.0.113.9"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((dest / "names-excluded").read_text().split(), ["nas.example.org", "203.0.113.9"])
+            sans = self.openssl("x509", "-in", str(dest / "selfsigned.crt"), "-noout", "-ext", "subjectAltName")
+            self.assertNotIn("example.org", sans)
+            self.assertIn("hbox.tail6328e7.ts.net", sans)
+            verify = subprocess.run(["openssl", "verify", "-CAfile", str(dest / "hbox-ca.crt"),
+                                     str(dest / "selfsigned.crt")], capture_output=True, text=True)
+            self.assertEqual(verify.returncode, 0, verify.stderr)
+
+    def test_ca_allows_public_names_it_was_created_with(self):
+        with tempfile.TemporaryDirectory(prefix="hbox constraints ") as directory:
+            dest, ca = Path(directory) / "certs", Path(directory) / "ca"
+            result = subprocess.run(["sh", str(ROOT / "scripts/generate-certs.sh"), str(dest), str(ca)],
+                                    capture_output=True, text=True, timeout=60,
+                                    env={**os.environ, "HBOX_CERT_NAMES": "nas.example.org,203.0.113.9"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(self.sign_probe(ca, "DNS:nas.example.org"))
+            self.assertTrue(self.sign_probe(ca, "IP:203.0.113.9"))
+            self.assertFalse(self.sign_probe(ca, "IP:203.0.113.10"))
+            self.assertFalse(self.sign_probe(ca, "DNS:example.org"))
+            # Before Tailscale is connected, any tailnet (enabled later).
+            self.assertTrue(self.sign_probe(ca, "DNS:hbox.tail1234.ts.net"))
+
     def test_ca_profile_for_iphone(self):
         import base64
         import plistlib
