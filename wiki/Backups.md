@@ -26,6 +26,7 @@ sudo hbox backup disk
 | Empty | You type its name (e.g. `sda`) to confirm; HBOX partitions and formats it (ext4) |
 | Has data | Nothing is changed unless you choose `--format` (erase) or `--keep` (keep its files; backups go in a folder `hbox/`; ext4, xfs, btrfs or exFAT only) |
 | Has HBOX backups | Used as it is; you enter their password ([new server](Restore.md#on-a-new-server)) |
+| Holds this server's backups, mounted elsewhere (e.g. set up before HBOX) | Taken over as it is: moved to `/mnt/hbox-backup`, its old `/etc/fstab` line replaced; the backups stay where they are on the disk |
 | Runs this server | Refused |
 
 HBOX mounts the disk at `/mnt/hbox-backup` (by UUID, with `nofail`, so the

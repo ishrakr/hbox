@@ -27,8 +27,9 @@ disk_tools() {
 # Every disk as JSON: name, path, size, model, transport, and, collected over
 # its partitions, what is on it.
 disk_inventory() {
-    local mount probed='{}' dev
+    local mount current probed='{}' dev
     mount=$(env_get_default HBOX_BACKUP_MOUNT '' "$HBOX_BACKUP_ENV" 2>/dev/null || true)
+    current=$(disk_current_mount)
     # lsblk shows what udev has recorded, which can lag for a disk that was
     # just attached; read the filesystems from the disks themselves too.
     udevadm trigger --subsystem-match=block --action=change >/dev/null 2>&1 || true
@@ -44,7 +45,8 @@ disk_inventory() {
             def fill: (if .fstype == null and $probed[.path] then . + $probed[.path] else . end)
                       | if .children then .children |= map(fill) else . end;
             .blockdevices |= map(fill)' |
-        jq -c --arg mount "${mount:-$HBOX_BACKUP_MOUNT_DEFAULT}" --arg loop "${HBOX_BACKUP_ALLOW_LOOP:-0}" '
+        jq -c --arg mount "${mount:-$HBOX_BACKUP_MOUNT_DEFAULT}" --arg current "$current" \
+            --arg loop "${HBOX_BACKUP_ALLOW_LOOP:-0}" '
         def nodes: ., (.children[]? | nodes);
         [.blockdevices[]
          | select(.type == "disk" or ($loop == "1" and .type == "loop"))
@@ -57,10 +59,23 @@ disk_inventory() {
             usb: (.tran == "usb" or .rm == true),
             mounts: $mounts,
             filesystems: [$all[] | select(.fstype != null) | {path, fstype, label, uuid, type}],
-            hbox: any($all[]; .label == "HBOX-BACKUP"),
-            system: (any($mounts[]; . != $mount and (startswith($mount + "/") | not))
+            hbox: (any($all[]; .label == "HBOX-BACKUP") or any($mounts[]; . == $mount)),
+            current: ($current != "" and any($mounts[]; . == $current)),
+            system: (any($mounts[]; . != $mount and . != $current and (startswith($mount + "/") | not))
                      or any($all[]; (.fstype // "") | test("^(swap|LVM2_member|linux_raid_member|crypto_LUKS|zfs_member|bcache)$"))),
             empty: (($all | length) == 1 and .fstype == null and .pttype == null)}]'
+}
+
+# Where the disk holding the current repository is mounted, when HBOX did not
+# mount it (set up before HBOX, or by hand): such a disk can be taken over.
+disk_current_mount() {
+    local repo target
+    [ -z "$(env_get_default HBOX_BACKUP_MOUNT '' "$HBOX_BACKUP_ENV" 2>/dev/null || true)" ] || return 0
+    repo=$(env_get RESTIC_REPOSITORY "$HBOX_BACKUP_ENV" 2>/dev/null || true)
+    [[ $repo == /* ]] && [ -d "$repo" ] || return 0
+    target=$(findmnt -no TARGET -T "$repo" 2>/dev/null) || return 0
+    [ -n "$target" ] && [ "$target" != / ] || return 0
+    printf '%s' "$target"
 }
 
 disk_state() {
@@ -68,6 +83,7 @@ disk_state() {
         if .system then "in use by this server"
         elif .ro then "read-only"
         elif .size < $min then "too small"
+        elif .current then "holds this server'"'"'s backups"
         elif .hbox then "HBOX backup disk"
         elif .empty then "empty"
         else "has data (" + ([.filesystems[] | .fstype + (if .label then " \"" + .label + "\"" else "" end)] | unique | join(", ") | if . == "" then "unknown" else . end) + ")"
@@ -203,8 +219,13 @@ cmd_backup_disk() {
     disk_usable "$disk" || die "$path cannot be used for backups: $state."
     heading "$path  $(disk_human_size "$(jq -r .size <<<"$disk")")  $(jq -r .model <<<"$disk")  — $state"
 
-    if jq -e .hbox <<<"$disk" >/dev/null; then
-        device=$(jq -r '[.filesystems[] | select(.label == "HBOX-BACKUP")][0].path' <<<"$disk")
+    if jq -e .current <<<"$disk" >/dev/null; then
+        disk_take_over
+        return 0
+    elif jq -e .hbox <<<"$disk" >/dev/null; then
+        device=$(findmnt -no SOURCE "$mount" 2>/dev/null || true)
+        [ -n "$device" ] && jq -e --arg d "$device" 'any(.filesystems[]; .path == $d)' <<<"$disk" >/dev/null ||
+            device=$(jq -r '[.filesystems[] | select(.label == "HBOX-BACKUP")][0].path' <<<"$disk")
         log "This disk already holds HBOX backups; using it as it is."
     elif jq -e .empty <<<"$disk" >/dev/null || [ "$format" = 1 ]; then
         if ! jq -e .empty <<<"$disk" >/dev/null; then
@@ -236,6 +257,13 @@ EOF
 
     disk_mount "$device" "$mount"
     repo=$mount/hbox
+    # Already this server's backup disk: keep its repository (e.g. restic/
+    # on a disk taken over from before HBOX).
+    local configured
+    configured=$(env_get RESTIC_REPOSITORY "$HBOX_BACKUP_ENV" 2>/dev/null || true)
+    if [[ $configured == "$mount"/* ]] && [ -f "$configured/config" ]; then
+        repo=$configured
+    fi
     if [ -f "$repo/config" ]; then
         existing=1
         log "Found an HBOX backup repository on the disk."
@@ -266,6 +294,47 @@ EOF
         echo >&2
         log "To bring this server back from these backups: sudo hbox backup restore"
     fi
+}
+
+# The disk already holds this server's repository but was mounted outside
+# HBOX: move it to HBOX's mount point, keeping the repository and its files.
+disk_take_over() {
+    local old device repo relative mount=$HBOX_BACKUP_MOUNT_DEFAULT tmp
+    old=$(disk_current_mount)
+    device=$(findmnt -no SOURCE "$old")
+    repo=$(env_get RESTIC_REPOSITORY "$HBOX_BACKUP_ENV")
+    relative=${repo#"$old"}
+    log "This disk holds the current backups (mounted at $old); HBOX takes it over as it is."
+
+    exec 9>/run/hbox-backup.lock
+    flock -n 9 || die "A backup is running; wait for it to finish."
+    if pgrep -x restic >/dev/null; then
+        log "Waiting for Backups to finish its current task"
+        local deadline=$((SECONDS + 600))
+        while pgrep -x restic >/dev/null; do
+            [ "$SECONDS" -ge "$deadline" ] && die "Backups is still busy; try again later."
+            sleep 3
+        done
+    fi
+    systemctl stop hbox-backrest.service >/dev/null 2>&1 || true
+    # On failure, Backups must come back with the disk where it was.
+    # shellcheck disable=SC2064
+    trap "findmnt -rno TARGET '$device' >/dev/null || mount '$device' '$old' 2>/dev/null; systemctl start hbox-backrest.service >/dev/null 2>&1 || true" EXIT
+
+    # The old mount entry would mount the disk a second time at boot.
+    tmp=$(mktemp /etc/fstab.hbox.XXXXXX)
+    awk -v m="$old" '$1 ~ /^#/ || $2 != m' /etc/fstab > "$tmp"
+    chmod 644 "$tmp"
+    cp -p /etc/fstab /etc/fstab.hbox-before-takeover
+    sync
+    umount "$old" || { rm -f "$tmp"; die "The backup disk is busy at $old; try again in a minute."; }
+    mv -f "$tmp" /etc/fstab
+    disk_mount "$device" "$mount"
+    trap - EXIT
+    [ -f "$mount$relative/config" ] || die "The repository is missing at $mount$relative."
+    rmdir "$old" 2>/dev/null || true
+    log "Moved the backup disk from $old to $mount (previous /etc/fstab: /etc/fstab.hbox-before-takeover)"
+    HBOX_BACKUP_MOUNT_SET=$mount backup_setup --existing --repo "$mount$relative"
 }
 
 disk_eject() {
