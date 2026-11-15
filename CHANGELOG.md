@@ -3,7 +3,7 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
-## Unreleased
+## v1.2.0 (2026-11-15)
 
 ### Added
 - Dashboard: **power menu** (power button, top right) with Restart apps,
