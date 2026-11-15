@@ -159,115 +159,106 @@ function formatRate(bytesPerSecond) {
   return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
 }
 
-// A small line chart of the last hour; one or more series of numbers.
-function drawChart(svg, series, max) {
-  const width = 120;
-  const height = 32;
-  svg.replaceChildren();
-  const count = Math.max(...series.map((s) => s.values.length));
-  if (count < 2) return;
-  const top = Math.max(max || 0, ...series.flatMap((s) => s.values), 1e-9);
-  for (const { values, className } of series) {
-    const points = values.map((value, index) => {
-      const x = (index / (count - 1)) * width;
-      const y = height - 1 - (Math.max(0, value) / top) * (height - 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    line.setAttribute("points", points.join(" "));
-    line.setAttribute("class", className);
-    line.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.append(line);
-  }
+// Tone of a value: calm until it needs attention.
+function level(percent, warn, high) {
+  if (percent >= high) return "high";
+  if (percent >= warn) return "warn";
+  return "";
 }
 
-function renderUsage(system) {
+function setVital(id, tone, tooltip) {
+  const node = $(id);
+  node.classList.toggle("warn", tone === "warn");
+  node.classList.toggle("high", tone === "high");
+  node.title = tooltip || "";
+}
+
+// The status line: one value per resource, details on hover or tap.
+function renderVitals(status) {
+  const system = status.system || {};
   const history = Array.isArray(system.history) ? system.history : [];
   const latest = history[history.length - 1];
-  const minutes = history.length > 1
-    ? Math.round((latest.t - history[0].t) / 60)
-    : 0;
-  const span = minutes > 1 ? `last ${minutes} min` : "";
+  const minutes = history.length > 1 ? Math.round((latest.t - history[0].t) / 60) : 0;
 
   if (latest) {
     const cpu = Math.round(latest.cpu);
+    const values = history.map((s) => s.cpu);
+    const average = Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
+    const peak = Math.round(Math.max(...values));
     $("cpu-text").textContent = `${cpu}%`;
-    $("cpu-bar").style.width = `${cpu}%`;
-    const meter = $("cpu-bar").parentElement;
-    meter.setAttribute("aria-valuenow", String(cpu));
-    meter.classList.toggle("warn", cpu >= 70 && cpu < 90);
-    meter.classList.toggle("full", cpu >= 90);
+    setVital("vital-cpu", level(cpu, 70, 90), [
+      system.cpus ? `${system.cpus} cores` : "",
+      minutes > 1 ? `average ${average}%, peak ${peak}% in the last ${minutes} min` : "",
+    ].filter(Boolean).join(" · "));
+
     $("net-rx").textContent = formatRate(latest.rx);
     $("net-tx").textContent = formatRate(latest.tx);
+    let totals = "";
+    if (minutes > 1) {
+      const sum = history.slice(1).reduce((acc, s, i) => {
+        const seconds = s.t - history[i].t;
+        return { rx: acc.rx + s.rx * seconds, tx: acc.tx + s.tx * seconds };
+      }, { rx: 0, tx: 0 });
+      totals = `${formatBytes(sum.rx)} down, ${formatBytes(sum.tx)} up in the last ${minutes} min`;
+    }
+    setVital("vital-net", "", totals);
   } else {
-    $("cpu-text").textContent = "Measuring…";
+    $("cpu-text").textContent = "–";
     $("net-rx").textContent = "–";
     $("net-tx").textContent = "–";
   }
 
-  const cpuValues = history.map((s) => s.cpu);
-  const average = cpuValues.length ? Math.round(cpuValues.reduce((a, b) => a + b, 0) / cpuValues.length) : null;
-  const cores = system.cpus ? `${system.cpus} core${system.cpus > 1 ? "s" : ""}` : "";
-  const load = typeof system.load === "number" ? `load ${system.load.toFixed(2)}` : "";
-  $("cpu-note").textContent = [
-    average !== null && span ? `Average ${average}% (${span})` : "", cores, load,
-  ].filter(Boolean).join(" · ");
-  drawChart($("cpu-chart"), [{ values: cpuValues, className: "line" }], 100);
-
-  const rx = history.map((s) => s.rx);
-  const tx = history.map((s) => s.tx);
-  const totals = history.length > 1
-    ? history.slice(1).reduce((sum, s, i) => {
-      const seconds = s.t - history[i].t;
-      return { rx: sum.rx + s.rx * seconds, tx: sum.tx + s.tx * seconds };
-    }, { rx: 0, tx: 0 })
-    : null;
-  $("net-note").textContent = totals && span
-    ? `${formatBytes(totals.rx)} down · ${formatBytes(totals.tx)} up (${span})`
-    : "";
   const memory = system.memory || {};
   if (memory.total > 0) {
     const percent = Math.round((memory.used / memory.total) * 100);
-    $("mem-text").textContent = `${percent}% used`;
-    $("mem-bar").style.width = `${percent}%`;
-    const meter = $("mem-bar").parentElement;
-    meter.setAttribute("aria-valuenow", String(percent));
-    meter.classList.toggle("warn", percent >= 80 && percent < 90);
-    meter.classList.toggle("full", percent >= 90);
-    const swap = memory.swap_used > 64e6 ? `${formatBytes(memory.swap_used)} swap in use` : "";
-    $("mem-note").textContent = [
-      `${formatBytes(memory.used)} of ${formatBytes(memory.total)}`, swap,
-    ].filter(Boolean).join(" · ");
+    $("mem-text").textContent = `${percent}%`;
+    setVital("vital-mem", level(percent, 80, 90), [
+      `${formatBytes(memory.used)} of ${formatBytes(memory.total)} in use`,
+      memory.swap_used > 64e6 ? `${formatBytes(memory.swap_used)} swap` : "",
+    ].filter(Boolean).join(" · "));
   }
-  drawChart($("mem-chart"), [{ values: history.map((s) => s.mem ?? null).filter((v) => v !== null), className: "line" }], 100);
 
-  drawChart($("net-chart"), [
-    { values: rx, className: "line" },
-    { values: tx, className: "line secondary" },
-  ]);
+  const disk = status.disk || {};
+  if (disk.total > 0) {
+    const percent = Math.round((disk.used / disk.total) * 100);
+    $("disk-text").textContent = `${formatBytes(disk.total - disk.used)} free`;
+    $("disk-bar").style.width = `${percent}%`;
+    setVital("vital-disk", level(percent, 80, 90),
+      `${percent}% of ${formatBytes(disk.total)} used`);
+  }
+
+  renderHealth(Array.isArray(status.disks) ? status.disks : []);
 }
 
-// One line per checked drive in the Storage tile; problems first.
-function renderDiskHealth(disks) {
-  const list = $("disk-health");
+// Drive health as one item: quiet when healthy, a sentence when not.
+function renderHealth(disks) {
   const known = disks.filter((d) => ["ok", "warning", "failing"].includes(d.status));
-  list.replaceChildren();
-  list.hidden = known.length === 0;
-  const order = { failing: 0, warning: 1, ok: 2 };
-  known.sort((a, b) => order[a.status] - order[b.status]);
-  for (const disk of known) {
-    const item = element("li", `disk ${disk.status}`);
-    const name = disk.role === "backup" ? "Backup disk" : "Server disk";
-    const state = disk.status === "ok" ? "healthy" : disk.status === "warning" ? "showing wear" : "failing";
-    const temp = typeof disk.temperature === "number" ? ` · ${disk.temperature} °C` : "";
-    item.append(element("span", "disk-dot"), element("span", "", `${name} ${state}${temp}`));
-    const problems = Array.isArray(disk.problems) ? disk.problems.join(", ") : "";
-    item.title = [disk.model, problems].filter(Boolean).join(": ");
-    if (disk.status !== "ok") {
-      item.append(element("span", "disk-advice", `${problems}. Run sudo hbox doctor.`));
-    }
-    list.append(item);
+  const item = $("vital-health");
+  const alert = $("health-alert");
+  item.hidden = known.length === 0;
+  if (known.length === 0) {
+    alert.hidden = true;
+    return;
   }
+  const name = (d) => (d.role === "backup" ? "backup disk" : "server disk");
+  const describe = (d) => [d.model, typeof d.temperature === "number" ? `${d.temperature} °C` : ""]
+    .filter(Boolean).join(", ");
+  const bad = known.filter((d) => d.status !== "ok");
+  const failing = bad.some((d) => d.status === "failing");
+  item.classList.toggle("warn", bad.length > 0 && !failing);
+  item.classList.toggle("high", failing);
+  $("health-text").textContent = bad.length === 0
+    ? (known.length > 1 ? "Disks healthy" : "Disk healthy")
+    : `${bad.length > 1 ? "Disks need" : "A disk needs"} attention`;
+  item.title = known.map((d) => `${name(d)}: ${d.status === "ok" ? "healthy" : d.status} (${describe(d)})`).join("\n");
+
+  alert.hidden = bad.length === 0;
+  alert.className = `health-alert${failing ? " high" : ""}`;
+  alert.textContent = bad.map((d) => {
+    const what = d.status === "failing" ? "is failing" : "is showing wear";
+    const problems = Array.isArray(d.problems) && d.problems.length ? ` (${d.problems.join(", ")})` : "";
+    return `The ${name(d)} ${what}${problems}. Copy what matters and plan to replace it; sudo hbox doctor has details.`;
+  }).join(" ");
 }
 
 let serverStatus = {};
@@ -283,20 +274,7 @@ async function loadStatus() {
   const status = serverStatus;
   $("server").hidden = false;
 
-  if (status.disk && status.disk.total > 0) {
-    const percent = Math.round((status.disk.used / status.disk.total) * 100);
-    $("disk-text").textContent = `${percent}% used`;
-    $("disk-free").textContent =
-      `${formatBytes(status.disk.total - status.disk.used)} free of ${formatBytes(status.disk.total)}`;
-    $("disk-bar").style.width = `${percent}%`;
-    const meter = $("disk-bar").parentElement;
-    meter.setAttribute("aria-valuenow", String(percent));
-    meter.classList.toggle("warn", percent >= 80 && percent < 90);
-    meter.classList.toggle("full", percent >= 90);
-  }
-
-  renderUsage(status.system || {});
-  renderDiskHealth(Array.isArray(status.disks) ? status.disks : []);
+  renderVitals(status);
 
   const backup = status.backup || {};
   const text = $("backup-text");

@@ -3,6 +3,15 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## Unreleased
+
+### Changed
+- Dashboard: CPU, memory, network, storage and disk health are one slim
+  status line instead of four tiles with charts. Values turn orange or red
+  only when they need attention; a disk with problems adds a message saying
+  what to do. Details (averages, peaks, totals, drive models and
+  temperatures) appear on hover or tap.
+
 ## v1.0.2 (2026-11-15)
 
 ### Added
