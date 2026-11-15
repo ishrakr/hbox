@@ -83,5 +83,5 @@ Keep `main` releasable: servers following it install every push.
 
 ## Wiki
 
-The wiki lives in `wiki/`. Edit it with the code it describes; it is
-published to the GitHub wiki.
+The wiki lives in `wiki/`. Edit it with the code it describes, then publish
+it to the GitHub wiki with `make wiki`.
