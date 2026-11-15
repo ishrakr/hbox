@@ -24,7 +24,7 @@ and database passwords. Nothing is copied or converted.
 
    Ideally also copy `/DATA` to another disk while the apps are stopped.
 
-2. **Check versions.** HBOX ships Immich `v2.7.5` and Nextcloud `35.0.3`.
+2. **Check versions.** HBOX ships Immich `v3.4.1` and Nextcloud `35.0.3`.
    Check Nextcloud with
    `docker exec -u abc nextcloud php /app/www/public/occ status`. If it is
    more than one major version below 35, the migration stops and says which

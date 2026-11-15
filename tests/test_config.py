@@ -154,8 +154,8 @@ class ComposeTests(unittest.TestCase):
 
     def test_app_versions_are_pinned(self):
         for name, prefix in (
-            ("immich-server", "ghcr.io/immich-app/immich-server:v2."),
-            ("immich-machine-learning", "ghcr.io/immich-app/immich-machine-learning:v2."),
+            ("immich-server", "ghcr.io/immich-app/immich-server:v3."),
+            ("immich-machine-learning", "ghcr.io/immich-app/immich-machine-learning:v3."),
             ("nextcloud", "lscr.io/linuxserver/nextcloud:35."),
             ("dockge", "louislam/dockge:1."),
             ("tailscale", "tailscale/tailscale:v1."),

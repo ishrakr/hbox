@@ -41,7 +41,7 @@ App versions come from HBOX's compose files and change with updates. To hold
 an app at a version of your choice, set it in `.env`:
 
 ```sh
-IMMICH_VERSION=v2.7.5
+IMMICH_VERSION=v3.4.1
 NEXTCLOUD_IMAGE=lscr.io/linuxserver/nextcloud:35.0.3
 DOCKGE_IMAGE=louislam/dockge:1.5.0
 TAILSCALE_IMAGE=tailscale/tailscale:v1.104.7

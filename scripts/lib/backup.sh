@@ -176,7 +176,7 @@ backup_prepare() {
     {
         printf 'hbox_home=%s\n' "$HBOX_HOME"
         printf 'data_root=%s\n' "$(env_get_default DATA_ROOT /DATA)"
-        printf 'immich_version=%s\n' "$(env_get_default IMMICH_VERSION v2.7.5)"
+        printf 'immich_version=%s\n' "$(env_get_default IMMICH_VERSION v3.4.1)"
         printf 'nextcloud_image=%s\n' "$(docker inspect -f '{{.Config.Image}}' nextcloud 2>/dev/null || true)"
         printf 'created=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } > "$staging/manifest"

@@ -4,7 +4,7 @@ name: hbox-photos
 
 services:
   immich-server:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2.7.5}
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.4.1}
     container_name: immich-server
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:2283:2283"
@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2.7.5}
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3.4.1}
     container_name: immich-machine-learning
     volumes:
       - type: bind
