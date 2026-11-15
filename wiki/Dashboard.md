@@ -29,6 +29,11 @@ network values are averages over that minute; the hour of history is kept in
 `sudo hbox doctor` reads it fresh. Virtual disks that report no health are not
 shown.
 
+## Footer
+
+The bottom of the page shows the address you used, **Trust this device**,
+**Help & wiki** (this wiki, in a new tab) and when the page last refreshed.
+
 ## Trust this device
 
 **Trust this device** at the bottom opens the steps to install HBOX's

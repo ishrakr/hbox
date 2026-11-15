@@ -3,6 +3,11 @@
 All notable changes to HBOX. Versions are git tags; servers following the
 `stable` channel get the newest one ([Updates](wiki/Updates.md)).
 
+## v1.4.2 (2026-11-15)
+
+### Added
+- Dashboard: **Help & wiki** link in the footer, to the HBOX wiki.
+
 ## v1.4.1 (2026-11-15)
 
 ### Changed

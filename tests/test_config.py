@@ -287,6 +287,10 @@ class AppsAndPatchesTests(unittest.TestCase):
 
 
 class ProxyAndRepositoryTests(unittest.TestCase):
+    def test_dashboard_links_to_the_wiki(self):
+        index = (ROOT / "config/dashboard/index.html").read_text()
+        self.assertIn('href="https://github.com/ishrakr/hbox/wiki" target="_blank" rel="noopener noreferrer"', index)
+
     def test_every_dashboard_action_is_locked_down(self):
         config = (ROOT / "config/nginx/default.conf").read_text()
         self.assertIn("limit_req_zone $binary_remote_addr zone=hbox_actions:1m rate=10r/m;", config)

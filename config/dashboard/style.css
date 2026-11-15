@@ -405,7 +405,9 @@ footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8p
   font: inherit;
   cursor: pointer;
 }
+a.link-button { text-decoration: none; }
 .link-button:hover { text-decoration: underline; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 16px; }
 .link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 dialog.trust { width: min(520px, calc(100vw - 32px)); }
